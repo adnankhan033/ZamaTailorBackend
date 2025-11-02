@@ -1,0 +1,8 @@
+name: Queue Sync
+type: module
+description: 'Create batches of dummy items and process specific number of items per batch via cron.'
+core_version_requirement: ^9 || ^10
+package: Custom
+version: 1.0
+dependencies:
+  - drupal:node

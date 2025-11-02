@@ -1,0 +1,4 @@
+services:
+  queue_sync.runner:
+    class: Drupal\queue_sync\Service\BatchRunner
+    public: true

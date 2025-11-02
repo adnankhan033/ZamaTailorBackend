@@ -1,0 +1,23 @@
+queue_sync.admin:
+  path: '/admin/config/queue-sync'
+  defaults:
+    _title: 'Queue Sync'
+    _controller: '\Drupal\queue_sync\Controller\QueueSyncController::overview'
+  requirements:
+    _permission: 'administer site configuration'
+
+queue_sync.generate:
+  path: '/admin/config/queue-sync/generate'
+  defaults:
+    _form: '\Drupal\queue_sync\Form\GenerateDummyForm'
+    _title: 'Generate dummy batch'
+  requirements:
+    _permission: 'administer site configuration'
+
+queue_sync.settings:
+  path: '/admin/config/queue-sync/settings'
+  defaults:
+    _form: '\Drupal\queue_sync\Form\QueueSyncSettingsForm'
+    _title: 'Queue Sync settings'
+  requirements:
+    _permission: 'administer site configuration'

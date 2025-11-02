@@ -1,0 +1,5 @@
+services:
+  custom_queue_processor.queue:
+    class: Drupal\custom_queue_processor\Queue\IntervalAwareDatabaseQueue
+    arguments: ['custom_queue_processor', '@database', '@config.factory']
+

@@ -1,0 +1,7 @@
+custom_queue_processor.overview:
+  title: 'Queue Processor'
+  description: 'Manage queue items, process specific records, and configure processing intervals. Create Basic Page nodes from processed items.'
+  parent: system.admin_config_system
+  route_name: custom_queue_processor.overview
+  weight: 100
+

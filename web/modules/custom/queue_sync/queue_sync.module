@@ -1,0 +1,16 @@
+<?php
+/**
+ * @file
+ * Main module file for queue_sync.
+ */
+
+use Drupal\queue_sync\Service\BatchRunner;
+
+/**
+ * Implements hook_cron().
+ */
+function queue_sync_cron() {
+  // Use the BatchRunner service to process due batches.
+  $runner = \Drupal::service('queue_sync.runner');
+  $runner->run();
+}

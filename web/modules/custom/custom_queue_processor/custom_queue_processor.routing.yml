@@ -1,0 +1,53 @@
+custom_queue_processor.overview:
+  path: '/admin/config/system/queue-processor'
+  defaults:
+    _controller: '\Drupal\custom_queue_processor\Controller\QueueProcessorController::overview'
+    _title: 'Overview'
+  requirements:
+    _permission: 'administer queue processor'
+
+custom_queue_processor.list:
+  path: '/admin/config/system/queue-processor/list'
+  defaults:
+    _controller: '\Drupal\custom_queue_processor\Controller\QueueProcessorController::list'
+    _title: 'Queue Items'
+  requirements:
+    _permission: 'administer queue processor'
+
+custom_queue_processor.process_form:
+  path: '/admin/config/system/queue-processor/process'
+  defaults:
+    _form: '\Drupal\custom_queue_processor\Form\ProcessQueueItemForm'
+    _title: 'Process Queue Item'
+  requirements:
+    _permission: 'administer queue processor'
+
+custom_queue_processor.create_dummy:
+  path: '/admin/config/system/queue-processor/create-dummy'
+  defaults:
+    _controller: '\Drupal\custom_queue_processor\Controller\QueueProcessorController::createDummy'
+  requirements:
+    _permission: 'administer queue processor'
+
+custom_queue_processor.process:
+  path: '/admin/config/system/queue-processor/process/{item_id}'
+  defaults:
+    _controller: '\Drupal\custom_queue_processor\Controller\QueueProcessorController::processItem'
+  requirements:
+    _permission: 'administer queue processor'
+    item_id: \d+
+
+custom_queue_processor.process_ready:
+  path: '/admin/config/system/queue-processor/process-ready'
+  defaults:
+    _controller: '\Drupal\custom_queue_processor\Controller\QueueProcessorController::processReadyItems'
+  requirements:
+    _permission: 'administer queue processor'
+
+custom_queue_processor.config:
+  path: '/admin/config/system/queue-processor/settings'
+  defaults:
+    _form: '\Drupal\custom_queue_processor\Form\QueueProcessorSettingsForm'
+    _title: 'Settings'
+  requirements:
+    _permission: 'administer queue processor'

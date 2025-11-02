@@ -1,0 +1,206 @@
+/**
+ * @file
+ * Settings form styling for Queue Sync module.
+ */
+
+/* Current Time Display */
+.current-time-display {
+  background: #f7fafc;
+  border: 2px solid #4299e1;
+  border-radius: 6px;
+  padding: 1rem 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.current-time-value {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #2d3748;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+}
+
+.current-time-info {
+  background: #ebf8ff;
+  border-left: 4px solid #4299e1;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1.5rem;
+  border-radius: 4px;
+  font-size: 0.9375rem;
+}
+
+.current-time-info strong {
+  color: #2c5282;
+}
+
+/* Batch Preview */
+.batch-preview {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  background: #f0fff4;
+  border-left: 4px solid #48bb78;
+  border-radius: 4px;
+  font-size: 0.9375rem;
+}
+
+.batch-preview strong {
+  color: #276749;
+}
+
+#run-time-preview {
+  font-weight: 700;
+  color: #2d3748;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+}
+
+/* Fieldset Styling */
+.queue-sync-settings-form fieldset {
+  margin-bottom: 2rem;
+  padding: 1.5rem;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+
+.queue-sync-settings-form fieldset legend {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #2d3748;
+  padding: 0 0.75rem;
+}
+
+.queue-sync-settings-form fieldset .description {
+  color: #718096;
+  font-size: 0.875rem;
+  margin-bottom: 1rem;
+}
+
+/* Info Section */
+.queue-sync-info {
+  padding: 1rem;
+  background: #f7fafc;
+  border-radius: 6px;
+}
+
+.queue-sync-info ul {
+  margin: 0;
+  padding-left: 1.5rem;
+}
+
+.queue-sync-info li {
+  margin-bottom: 0.75rem;
+  line-height: 1.6;
+}
+
+.queue-sync-info li strong {
+  color: #2d3748;
+}
+
+/* Delay Minutes Info Display */
+.delay-minutes-info {
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: #f7fafc;
+  border-left: 3px solid #4299e1;
+  border-radius: 4px;
+  color: #718096;
+}
+
+.delay-minutes-info small {
+  font-size: 0.875rem;
+}
+
+.delay-minutes-info strong {
+  color: #2c5282;
+}
+
+#delay-minutes-display {
+  font-weight: 600;
+  color: #2d3748;
+  font-style: italic;
+}
+
+/* Form Elements */
+.queue-sync-settings-form .form-item {
+  margin-bottom: 1.5rem;
+}
+
+.queue-sync-settings-form .form-item label {
+  font-weight: 600;
+  color: #2d3748;
+  margin-bottom: 0.5rem;
+}
+
+.queue-sync-settings-form input[type="number"],
+.queue-sync-settings-form select {
+  width: 100%;
+  max-width: 300px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #cbd5e0;
+  border-radius: 4px;
+  font-size: 0.9375rem;
+}
+
+.queue-sync-settings-form input[type="number"]:focus,
+.queue-sync-settings-form select:focus {
+  outline: none;
+  border-color: #4299e1;
+  box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.1);
+}
+
+/* Field Suffix */
+.field-suffix {
+  color: #718096;
+  font-size: 0.875rem;
+  margin-left: 0.5rem;
+}
+
+/* Checkbox Styling */
+.queue-sync-settings-form .form-checkbox {
+  margin-right: 0.5rem;
+}
+
+/* Messages */
+.queue-sync-settings-form .messages {
+  padding: 1rem;
+  border-radius: 6px;
+  margin-bottom: 1rem;
+}
+
+.queue-sync-settings-form .messages--warning {
+  background: #fef5e7;
+  border-left: 4px solid #ed8936;
+  color: #c05621;
+}
+
+/* Submit Button */
+.queue-sync-settings-form .form-actions {
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 2px solid #e2e8f0;
+}
+
+.queue-sync-settings-form .form-actions .button--primary {
+  background-color: #3182ce;
+  color: white;
+  padding: 0.75rem 1.5rem;
+  border-radius: 6px;
+  font-weight: 600;
+  transition: background-color 0.2s ease;
+}
+
+.queue-sync-settings-form .form-actions .button--primary:hover {
+  background-color: #2c5aa0;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .queue-sync-settings-form fieldset {
+    padding: 1rem;
+  }
+  
+  .queue-sync-settings-form input[type="number"],
+  .queue-sync-settings-form select {
+    max-width: 100%;
+  }
+}
+

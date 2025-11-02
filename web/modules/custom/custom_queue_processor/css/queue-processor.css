@@ -1,0 +1,100 @@
+/**
+ * @file
+ * Styles for Queue Processor module.
+ */
+
+.queue-processor-overview {
+  margin-bottom: 2em;
+}
+
+.queue-processor-overview h3 {
+  margin-top: 0;
+}
+
+.queue-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5em;
+  margin: 2em 0;
+}
+
+.stat-box {
+  flex: 1;
+  min-width: 150px;
+  padding: 1.5em;
+  background: #f5f5f5;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  text-align: center;
+}
+
+.stat-box strong {
+  display: block;
+  font-size: 0.9em;
+  color: #666;
+  margin-bottom: 0.5em;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.stat-number {
+  font-size: 2em;
+  font-weight: bold;
+  color: #333;
+}
+
+.stat-number.ready {
+  color: #28a745;
+}
+
+.stat-number.pending {
+  color: #ffc107;
+}
+
+.action-links {
+  margin: 1em 0;
+}
+
+.action-links .button {
+  margin-right: 0.5em;
+}
+
+.queue-items-table {
+  margin-top: 2em;
+}
+
+.queue-items-table th {
+  background: #f5f5f5;
+  font-weight: 600;
+}
+
+.queue-items-table .status-ready {
+  color: #28a745;
+  font-weight: 600;
+}
+
+.queue-items-table .status-pending {
+  color: #ffc107;
+  font-weight: 600;
+}
+
+.process-item-form {
+  max-width: 600px;
+}
+
+.process-item-form .form-item-quick-select {
+  margin-bottom: 1.5em;
+}
+
+.process-item-form .form-item-item-id {
+  margin-top: 1em;
+}
+
+.form-actions {
+  margin-top: 2em;
+}
+
+.form-actions .button {
+  margin-right: 0.5em;
+}
+

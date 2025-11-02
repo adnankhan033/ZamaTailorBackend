@@ -1,0 +1,6 @@
+name: Custom Queue Processor
+type: module
+description: 'Custom queue processor with configurable processing intervals and node creation'
+core_version_requirement: ^10 || ^11
+package: Custom
+

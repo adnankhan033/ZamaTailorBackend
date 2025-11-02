@@ -1,0 +1,11 @@
+custom_queue_processor.settings:
+  type: config_object
+  label: 'Queue Processor Settings'
+  mapping:
+    processing_interval:
+      type: integer
+      label: 'Processing Interval (minutes)'
+    batch_size:
+      type: integer
+      label: 'Items to Process at a Time'
+
