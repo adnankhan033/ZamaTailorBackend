@@ -1,0 +1,5 @@
+items_per_run: 5
+default_delay_minutes: 1
+max_batches_per_run: 20
+auto_publish: true
+node_type: page

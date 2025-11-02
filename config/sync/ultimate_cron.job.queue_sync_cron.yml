@@ -1,0 +1,29 @@
+uuid: dbdf02a7-92a7-4bc2-a9c6-a1f56b8178e6
+langcode: en
+status: true
+dependencies:
+  module:
+    - queue_sync
+title: 'Default cron handler'
+id: queue_sync_cron
+weight: 0
+module: queue_sync
+callback: 'queue_sync#cron'
+scheduler:
+  id: simple
+  configuration:
+    rules:
+      - '* * * * *'
+launcher:
+  id: serial
+  configuration:
+    timeouts:
+      lock_timeout: 3600
+    launcher:
+      thread: 0
+logger:
+  id: database
+  configuration:
+    method: '3'
+    expire: 1209600
+    retain: 1000

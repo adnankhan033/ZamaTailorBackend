@@ -1,0 +1,29 @@
+uuid: 8f802c04-b5fc-4691-961a-37d2ffd411a8
+langcode: en
+status: true
+dependencies:
+  module:
+    - custom_queue_processor
+title: 'Default cron handler'
+id: custom_queue_processor_cron
+weight: 0
+module: custom_queue_processor
+callback: 'custom_queue_processor#cron'
+scheduler:
+  id: simple
+  configuration:
+    rules:
+      - '* * * * *'
+launcher:
+  id: serial
+  configuration:
+    timeouts:
+      lock_timeout: 3600
+    launcher:
+      thread: 0
+logger:
+  id: database
+  configuration:
+    method: '3'
+    expire: 1209600
+    retain: 1000
