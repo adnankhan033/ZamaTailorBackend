@@ -9,6 +9,7 @@ dependencies:
   module:
     - comment
     - contextual
+    - custom_rest_api
     - file
     - node
     - path
@@ -41,6 +42,7 @@ permissions:
   - 'edit own comments'
   - 'edit own page content'
   - 'edit terms in tags'
+  - 'restful post article_resource'
   - 'revert all revisions'
   - 'view all revisions'
   - 'view own unpublished content'

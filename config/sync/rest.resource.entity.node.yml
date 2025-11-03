@@ -1,0 +1,22 @@
+uuid: 1d5fe928-2036-434c-8c42-b0de0f5fd5ea
+langcode: en
+status: true
+dependencies:
+  module:
+    - jwt
+    - node
+    - serialization
+    - user
+id: entity.node
+plugin_id: 'entity:node'
+granularity: resource
+configuration:
+  methods:
+    - GET
+    - POST
+    - DELETE
+  formats:
+    - json
+  authentication:
+    - jwt_auth
+    - cookie

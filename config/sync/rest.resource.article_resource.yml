@@ -1,0 +1,19 @@
+uuid: custom-article-resource-uuid
+langcode: en
+status: true
+dependencies:
+  module:
+    - custom_rest_api
+    - jwt
+    - serialization
+_core:
+  default_config_hash: mW7DYFTST8urEOJu1PYgU2bkEul5a82Yr3N8rsq3948
+id: article_resource
+plugin_id: article_resource
+granularity: method
+configuration:
+  POST:
+    supported_formats:
+      - json
+    supported_auth:
+      - jwt_auth
