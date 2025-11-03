@@ -14,6 +14,7 @@ module:
   comment: 0
   config: 0
   contact: 0
+  custom_rest_api: 0
   contextual: 0
   custom_queue_processor: 0
   datetime: 0
