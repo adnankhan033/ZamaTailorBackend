@@ -13,11 +13,9 @@ id: login_resource
 plugin_id: login_resource
 granularity: method
 configuration:
-  methods:
-    - POST
-  formats:
-    - json
-  authentication:
-    - cookie
-  no_cache: false
+  POST:
+    supported_formats:
+      - json
+    supported_auth:
+      - cookie
 

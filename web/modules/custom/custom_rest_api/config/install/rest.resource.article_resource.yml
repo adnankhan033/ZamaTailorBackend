@@ -15,12 +15,24 @@ id: article_resource
 plugin_id: article_resource
 granularity: method
 configuration:
-  methods:
-    - POST
-  formats:
-    - json
-  authentication:
-    - jwt_auth
-    - cookie
-  no_cache: false
+  GET:
+    supported_formats:
+      - json
+    supported_auth:
+      - jwt_auth
+  POST:
+    supported_formats:
+      - json
+    supported_auth:
+      - jwt_auth
+  PATCH:
+    supported_formats:
+      - json
+    supported_auth:
+      - jwt_auth
+  DELETE:
+    supported_formats:
+      - json
+    supported_auth:
+      - jwt_auth
 

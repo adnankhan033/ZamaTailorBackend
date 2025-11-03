@@ -18,11 +18,15 @@ function custom_rest_api_install() {
     $anonymous_role->save();
   }
 
-  // Grant authenticated users permission to create articles
+  // Grant authenticated users permissions for logout and article resources
   $authenticated_role = \Drupal\user\Entity\Role::load(\Drupal\user\RoleInterface::AUTHENTICATED_ID);
   
   if ($authenticated_role) {
+    $authenticated_role->grantPermission('restful post logout_resource');
+    $authenticated_role->grantPermission('restful get article_resource');
     $authenticated_role->grantPermission('restful post article_resource');
+    $authenticated_role->grantPermission('restful patch article_resource');
+    $authenticated_role->grantPermission('restful delete article_resource');
     $authenticated_role->save();
   }
 
@@ -42,11 +46,15 @@ function custom_rest_api_uninstall() {
     $anonymous_role->save();
   }
 
-  // Revoke article resource permission
+  // Revoke logout and article resource permissions
   $authenticated_role = \Drupal\user\Entity\Role::load(\Drupal\user\RoleInterface::AUTHENTICATED_ID);
   
   if ($authenticated_role) {
+    $authenticated_role->revokePermission('restful post logout_resource');
+    $authenticated_role->revokePermission('restful get article_resource');
     $authenticated_role->revokePermission('restful post article_resource');
+    $authenticated_role->revokePermission('restful patch article_resource');
+    $authenticated_role->revokePermission('restful delete article_resource');
     $authenticated_role->save();
   }
 }

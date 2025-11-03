@@ -7,6 +7,7 @@ dependencies:
   - drupal:rest
   - drupal:serialization
   - drupal:user
+  - drupal:node
   - jwt:jwt
   - jwt:jwt_auth_consumer
 

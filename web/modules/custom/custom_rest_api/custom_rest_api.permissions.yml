@@ -3,8 +3,28 @@ restful post login_resource:
   description: 'Access the custom login REST resource'
   restrict access: false
 
+restful post logout_resource:
+  title: 'Use logout resource REST resource'
+  description: 'Access the custom logout REST resource'
+  restrict access: true
+
+restful get article_resource:
+  title: 'View article resource REST resource'
+  description: 'View articles via the custom article REST resource'
+  restrict access: true
+
 restful post article_resource:
   title: 'Use article resource REST resource'
   description: 'Create articles via the custom article REST resource'
+  restrict access: true
+
+restful patch article_resource:
+  title: 'Update article resource REST resource'
+  description: 'Update articles via the custom article REST resource'
+  restrict access: true
+
+restful delete article_resource:
+  title: 'Delete article resource REST resource'
+  description: 'Delete articles via the custom article REST resource'
   restrict access: true
 

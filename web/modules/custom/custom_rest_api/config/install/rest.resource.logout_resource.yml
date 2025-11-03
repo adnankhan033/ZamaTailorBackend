@@ -14,12 +14,9 @@ id: logout_resource
 plugin_id: logout_resource
 granularity: method
 configuration:
-  methods:
-    - POST
-  formats:
-    - json
-  authentication:
-    - jwt_auth
-    - cookie
-  no_cache: false
+  POST:
+    supported_formats:
+      - json
+    supported_auth:
+      - jwt_auth
 
