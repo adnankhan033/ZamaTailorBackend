@@ -1,0 +1,14 @@
+uuid: 65424d99-1dd2-44fe-909f-c83468dd9b65
+langcode: en
+status: true
+dependencies:
+  config:
+    - user.role.tailor
+  module:
+    - user
+id: user_add_role_action.tailor
+label: 'Add the Tailor role to the selected user(s)'
+type: user
+plugin: user_add_role_action
+configuration:
+  rid: tailor
