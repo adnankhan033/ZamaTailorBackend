@@ -27,6 +27,11 @@ module:
   help: 0
   history: 0
   image: 0
+  jwt: 0
+  jwt_auth_consumer: 0
+  jwt_auth_issuer: 0
+  jwt_path_auth: 0
+  key: 0
   link: 0
   menu_link_content: 0
   menu_ui: 0
@@ -47,6 +52,7 @@ module:
   ultimate_cron: 0
   update: 0
   user: 0
+  users_jwt: 0
   views_ui: 0
   views: 10
   standard: 1000
