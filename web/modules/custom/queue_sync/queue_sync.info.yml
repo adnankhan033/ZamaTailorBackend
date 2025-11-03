@@ -1,8 +1,8 @@
 name: Queue Sync
 type: module
-description: 'Create batches of dummy items and process specific number of items per batch via cron.'
+description: "Handles periodic syncing of user records. Each user's records are queued and inserted in batches to keep local and server data consistent."
 core_version_requirement: ^9 || ^10
 package: Custom
-version: 1.0
+version: '1.0'
 dependencies:
   - drupal:node

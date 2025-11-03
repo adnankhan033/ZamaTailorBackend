@@ -14,7 +14,23 @@ queue_sync.generate:
   requirements:
     _permission: 'administer site configuration'
 
-queue_sync.settings:
+queue_sync.sync_users:
+  path: '/admin/config/queue-sync/sync-users'
+  defaults:
+    _form: '\Drupal\queue_sync\Form\SyncUsersForm'
+    _title: 'Sync User Records'
+  requirements:
+    _permission: 'administer site configuration'
+
+queue_sync.generate_large:
+  path: '/admin/config/queue-sync/generate-large'
+  defaults:
+    _form: '\Drupal\queue_sync\Form\GenerateLargeTestDataForm'
+    _title: 'Generate Large Test Data'
+  requirements:
+    _permission: 'administer site configuration'
+
+landoqueue_sync.settings:
   path: '/admin/config/queue-sync/settings'
   defaults:
     _form: '\Drupal\queue_sync\Form\QueueSyncSettingsForm'

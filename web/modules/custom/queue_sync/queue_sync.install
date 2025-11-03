@@ -30,5 +30,45 @@ function queue_sync_schema() {
     ],
   ];
 
+  $schema['queue_sync_user_records'] = [
+    'description' => 'Synced user records for queue_sync',
+    'fields' => [
+      'id' => ['type' => 'serial', 'not null' => TRUE],
+      'uid' => ['type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE],
+      'username' => ['type' => 'varchar', 'length' => 255, 'not null' => TRUE],
+      'email' => ['type' => 'varchar', 'length' => 255, 'not null' => TRUE],
+      'status' => ['type' => 'int', 'not null' => TRUE, 'default' => 0],
+      'user_data' => ['type' => 'blob', 'size' => 'big', 'not null' => FALSE, 'description' => 'Serialized user data'],
+      'sync_timestamp' => ['type' => 'int', 'not null' => TRUE],
+      'last_sync' => ['type' => 'int', 'not null' => TRUE],
+    ],
+    'primary key' => ['id'],
+    'unique keys' => [
+      'uid' => ['uid'],
+    ],
+    'indexes' => [
+      'username' => ['username'],
+      'email' => ['email'],
+      'sync_timestamp' => ['sync_timestamp'],
+      'last_sync' => ['last_sync'],
+    ],
+  ];
+
   return $schema;
+}
+
+/**
+ * Create queue_sync_user_records table for existing installations.
+ *
+ * Update hook for Drupal 10: Use 10xxx format.
+ */
+function queue_sync_update_10001() {
+  $schema = queue_sync_schema();
+  
+  if (!\Drupal::database()->schema()->tableExists('queue_sync_user_records')) {
+    \Drupal::database()->schema()->createTable('queue_sync_user_records', $schema['queue_sync_user_records']);
+    return \Drupal::translation()->translate('Created queue_sync_user_records table.');
+  }
+  
+  return \Drupal::translation()->translate('queue_sync_user_records table already exists.');
 }

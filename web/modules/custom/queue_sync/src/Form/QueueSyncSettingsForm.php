@@ -48,10 +48,85 @@ class QueueSyncSettingsForm extends ConfigFormBase {
     $form['processing']['items_per_run'] = [
       '#type' => 'number',
       '#title' => $this->t('Items to Process Per Run'),
-      '#description' => $this->t('The number of queue items that will be processed per cron run for each batch.'),
-      '#default_value' => $config->get('items_per_run') ?? 5,
+      '#description' => $this->t('The maximum number of queue items processed per cron run for each batch. <strong>Smart behavior:</strong> If remaining items are less than or equal to this limit, ALL remaining items will be processed to complete the batch immediately. Recommended: 50-200 for large datasets.'),
+      '#default_value' => $config->get('items_per_run') ?? 50,
+      '#min' => 1,
+      '#max' => 1000,
+      '#required' => TRUE,
+      '#field_suffix' => $this->t('items'),
+    ];
+
+    $form['processing']['bulk_process_size'] = [
+      '#type' => 'number',
+      '#title' => $this->t('Bulk Process Size'),
+      '#description' => $this->t('Number of items to process together in a single bulk operation. Higher values improve performance but use more memory.'),
+      '#default_value' => $config->get('bulk_process_size') ?? 10,
       '#min' => 1,
       '#max' => 100,
+      '#required' => TRUE,
+      '#field_suffix' => $this->t('items'),
+    ];
+
+    $form['processing']['memory_threshold_mb'] = [
+      '#type' => 'number',
+      '#title' => $this->t('Memory Threshold (MB)'),
+      '#description' => $this->t('Maximum memory increase (in MB) before stopping batch processing. This prevents memory exhaustion with large datasets.'),
+      '#default_value' => $config->get('memory_threshold_mb') ?? 128,
+      '#min' => 64,
+      '#max' => 1024,
+      '#required' => TRUE,
+      '#field_suffix' => $this->t('MB'),
+    ];
+
+    $form['processing']['user_chunk_size'] = [
+      '#type' => 'number',
+      '#title' => $this->t('User Chunk Size'),
+      '#description' => $this->t('Number of users to fetch and queue per chunk when creating sync batches. Lower values use less memory.'),
+      '#default_value' => $config->get('user_chunk_size') ?? 100,
+      '#min' => 10,
+      '#max' => 1000,
+      '#required' => TRUE,
+      '#field_suffix' => $this->t('users'),
+    ];
+
+    // Capacity management settings.
+    $form['capacity'] = [
+      '#type' => 'fieldset',
+      '#title' => $this->t('Capacity & Auto-Chunking Settings'),
+      '#description' => $this->t('Configure automatic chunking for large datasets to prevent memory exhaustion.'),
+    ];
+
+    $form['capacity']['max_memory_usage_mb'] = [
+      '#type' => 'number',
+      '#title' => $this->t('Maximum Memory Usage Per Batch (MB)'),
+      '#description' => $this->t('Maximum memory that can be used per batch. If data exceeds this, it will be automatically split into multiple batches. Current PHP limit: @limit', [
+        '@limit' => ini_get('memory_limit'),
+      ]),
+      '#default_value' => $config->get('max_memory_usage_mb') ?? 256,
+      '#min' => 64,
+      '#max' => 2048,
+      '#required' => TRUE,
+      '#field_suffix' => $this->t('MB'),
+    ];
+
+    $form['capacity']['min_chunk_size'] = [
+      '#type' => 'number',
+      '#title' => $this->t('Minimum Chunk Size'),
+      '#description' => $this->t('Minimum number of items per chunk when auto-chunking. Prevents creating too many small batches.'),
+      '#default_value' => $config->get('min_chunk_size') ?? 10,
+      '#min' => 1,
+      '#max' => 100,
+      '#required' => TRUE,
+      '#field_suffix' => $this->t('items'),
+    ];
+
+    $form['capacity']['max_chunk_size'] = [
+      '#type' => 'number',
+      '#title' => $this->t('Maximum Chunk Size'),
+      '#description' => $this->t('Maximum number of items per chunk. Prevents creating batches that are too large.'),
+      '#default_value' => $config->get('max_chunk_size') ?? 1000,
+      '#min' => 100,
+      '#max' => 10000,
       '#required' => TRUE,
       '#field_suffix' => $this->t('items'),
     ];
@@ -170,6 +245,12 @@ class QueueSyncSettingsForm extends ConfigFormBase {
       ->set('items_per_run', (int) $form_state->getValue('items_per_run'))
       ->set('default_delay_minutes', (int) $form_state->getValue('default_delay_minutes'))
       ->set('max_batches_per_run', (int) $form_state->getValue('max_batches_per_run'))
+      ->set('bulk_process_size', (int) $form_state->getValue('bulk_process_size'))
+      ->set('memory_threshold_mb', (int) $form_state->getValue('memory_threshold_mb'))
+      ->set('user_chunk_size', (int) $form_state->getValue('user_chunk_size'))
+      ->set('max_memory_usage_mb', (int) $form_state->getValue('max_memory_usage_mb'))
+      ->set('min_chunk_size', (int) $form_state->getValue('min_chunk_size'))
+      ->set('max_chunk_size', (int) $form_state->getValue('max_chunk_size'))
       ->set('auto_publish', (bool) $form_state->getValue('auto_publish'));
     
     // Only set node_type if it's available

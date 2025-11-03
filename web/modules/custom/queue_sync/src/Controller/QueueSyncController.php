@@ -57,6 +57,17 @@ class QueueSyncController extends ControllerBase {
       ],
     ];
 
+    // Use direct path instead of route to avoid cache dependency.
+    $build['header']['actions']['generate_large'] = [
+      '#type' => 'link',
+      '#title' => $this->t('Generate Large Test Data'),
+      '#url' => Url::fromUri('internal:/admin/config/queue-sync/generate-large'),
+      '#attributes' => [
+        'class' => ['button', 'button--primary', 'queue-sync-btn'],
+        'title' => $this->t('Generate huge amounts of test data to verify auto-chunking (10,000 - 500,000+ items)'),
+      ],
+    ];
+
     $build['header']['actions']['settings'] = [
       '#type' => 'link',
       '#title' => $this->t('Settings'),
@@ -265,13 +276,17 @@ class QueueSyncController extends ControllerBase {
             'batch_id' => [
               'data' => [
                 '#type' => 'markup',
-                '#markup' => '<code class="batch-id">' . substr($batch->batch_id, 0, 20) . '...</code>',
+                // Security: Escape output to prevent XSS.
+                '#markup' => '<code class="batch-id">' . $this->t('@id...', [
+                  '@id' => htmlspecialchars(substr($batch->batch_id, 0, 20), ENT_QUOTES, 'UTF-8'),
+                ]) . '</code>',
               ],
             ],
             'queue_name' => [
               'data' => [
                 '#type' => 'markup',
-                '#markup' => '<code class="queue-name">' . $batch->queue_name . '</code>',
+                // Security: Escape output to prevent XSS.
+                '#markup' => '<code class="queue-name">' . htmlspecialchars($batch->queue_name, ENT_QUOTES, 'UTF-8') . '</code>',
               ],
             ],
             'progress' => [
