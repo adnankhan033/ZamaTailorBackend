@@ -28,3 +28,23 @@ restful delete article_resource:
   description: 'Delete articles via the custom article REST resource'
   restrict access: true
 
+
+restful get customer_profile_resource:
+  title: 'View customer profile resource REST resource'
+  description: 'View customer profiles via the custom customer profile REST resource'
+  restrict access: true
+
+restful post customer_profile_resource:
+  title: 'Use customer profile resource REST resource'
+  description: 'Create customer profiles via the custom customer profile REST resource'
+  restrict access: true
+
+restful patch customer_profile_resource:
+  title: 'Update customer profile resource REST resource'
+  description: 'Update customer profiles via the custom customer profile REST resource'
+  restrict access: true
+
+restful delete customer_profile_resource:
+  title: 'Delete customer profile resource REST resource'
+  description: 'Delete customer profiles via the custom customer profile REST resource'
+  restrict access: true

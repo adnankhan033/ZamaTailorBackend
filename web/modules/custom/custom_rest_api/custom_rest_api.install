@@ -27,6 +27,10 @@ function custom_rest_api_install() {
     $authenticated_role->grantPermission('restful post article_resource');
     $authenticated_role->grantPermission('restful patch article_resource');
     $authenticated_role->grantPermission('restful delete article_resource');
+    $authenticated_role->grantPermission('restful get customer_profile_resource');
+    $authenticated_role->grantPermission('restful post customer_profile_resource');
+    $authenticated_role->grantPermission('restful patch customer_profile_resource');
+    $authenticated_role->grantPermission('restful delete customer_profile_resource');
     $authenticated_role->save();
   }
 
@@ -55,6 +59,10 @@ function custom_rest_api_uninstall() {
     $authenticated_role->revokePermission('restful post article_resource');
     $authenticated_role->revokePermission('restful patch article_resource');
     $authenticated_role->revokePermission('restful delete article_resource');
+    $authenticated_role->revokePermission('restful get customer_profile_resource');
+    $authenticated_role->revokePermission('restful post customer_profile_resource');
+    $authenticated_role->revokePermission('restful patch customer_profile_resource');
+    $authenticated_role->revokePermission('restful delete customer_profile_resource');
     $authenticated_role->save();
   }
 }
