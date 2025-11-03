@@ -1,0 +1,543 @@
+<?php
+
+/**
+ * @file
+ * Queue processor module file.
+ */
+
+use Drupal\Core\Queue\QueueFactory;
+use Drupal\Core\Config\ConfigFactoryInterface;
+
+/**
+ * Implements hook_module_implements_alter().
+ *
+ * Ensures our cron hook runs early to prevent other modules from processing
+ * our queue automatically.
+ */
+function custom_queue_processor_module_implements_alter(&$implementations, $hook) {
+  if ($hook === 'cron') {
+    // Move our hook to run early in the cron sequence.
+    if (isset($implementations['custom_queue_processor'])) {
+      $group = $implementations['custom_queue_processor'];
+      unset($implementations['custom_queue_processor']);
+      // Insert at the beginning to process before any automatic queue processing.
+      $implementations = ['custom_queue_processor' => $group] + $implementations;
+    }
+  }
+}
+
+/**
+ * Implements hook_cron().
+ *
+ * Automatically processes ready queue items based on configured batch size.
+ * IMPORTANT: Only processes the EXACT number defined in batch_size setting,
+ * NOT all ready items. This ensures controlled processing.
+ *
+ * Flow:
+ * 1. Items are created -> Status: Pending
+ * 2. After processing_interval minutes -> Status: Ready (automatically)
+ * 3. This function processes ONLY batch_size number of ready items
+ * 4. Creates Basic Page nodes for those specific items
+ * 5. Remaining ready items wait for next cron run
+ *
+ * NOTE: We process items DIRECTLY from the database, NOT through Drupal's
+ * queue API, to have full control over batch_size limiting.
+ */
+function custom_queue_processor_cron() {
+  $config = \Drupal::config('custom_queue_processor.settings');
+  $batch_size = (int) ($config->get('batch_size') ?? 10);
+  $processing_interval = (int) ($config->get('processing_interval') ?? 60);
+
+  // Validate batch size.
+  if ($batch_size <= 0) {
+    \Drupal::logger('custom_queue_processor')->warning('Invalid batch_size setting: @batch. Skipping queue processing.', [
+      '@batch' => $batch_size,
+    ]);
+    return;
+  }
+
+  // CRITICAL: Use a lock to prevent concurrent processing and Drupal's auto-processing.
+  $lock = \Drupal::lock();
+  $lock_name = 'custom_queue_processor_cron';
+  
+  // Try to acquire lock - wait max 5 seconds.
+  if (!$lock->acquire($lock_name, 5)) {
+    \Drupal::logger('custom_queue_processor')->warning('Could not acquire lock for queue processing. Another process may be running.');
+    return;
+  }
+
+  try {
+    $database = \Drupal::database();
+    $current_time = \Drupal::time()->getCurrentTime();
+    $ready_time = $current_time - ($processing_interval * 60);
+    $lease_time = $current_time + 300; // 5 minutes lease to prevent other processes
+
+    // Count total ready items for logging.
+    $total_ready = $database->select('queue', 'q')
+      ->condition('q.name', 'custom_queue_processor')
+      ->condition('q.created', $ready_time, '<=')
+      ->condition('q.expire', 0)
+      ->countQuery()
+      ->execute()
+      ->fetchField();
+
+    if ($total_ready == 0) {
+      // No ready items, nothing to process.
+      $lock->release($lock_name);
+      return;
+    }
+
+    // CRITICAL: Get ONLY batch_size items and IMMEDIATELY mark them as claimed (expire > 0).
+    // This prevents Drupal's automatic queue processing from touching them.
+    // We use a transaction to ensure atomicity.
+    $transaction = $database->startTransaction();
+    
+    try {
+      // Step 1: Get item IDs of ONLY batch_size items (not all ready items).
+      $item_ids_query = $database->select('queue', 'q')
+        ->fields('q', ['item_id'])
+        ->condition('q.name', 'custom_queue_processor')
+        ->condition('q.created', $ready_time, '<=')
+        ->condition('q.expire', 0)
+        ->orderBy('q.created', 'ASC')
+        ->range(0, $batch_size); // CRITICAL: Only batch_size items!
+      
+      $item_ids = $item_ids_query->execute()->fetchCol();
+      
+      if (empty($item_ids)) {
+        $transaction->rollback();
+        $lock->release($lock_name);
+        return;
+      }
+
+      // Step 2: IMMEDIATELY mark these items as claimed (set expire > 0) to prevent other processing.
+      $claimed_count = $database->update('queue')
+        ->fields(['expire' => $lease_time])
+        ->condition('name', 'custom_queue_processor')
+        ->condition('item_id', $item_ids, 'IN')
+        ->condition('expire', 0) // Only claim unclaimed items
+        ->execute();
+
+      if ($claimed_count == 0) {
+        // Items were already claimed by another process - this shouldn't happen with lock.
+        $transaction->rollback();
+        $lock->release($lock_name);
+        return;
+      }
+
+      // Step 3: Now fetch the full data for claimed items.
+      $ready_items = $database->select('queue', 'q')
+        ->fields('q', ['item_id', 'data', 'created'])
+        ->condition('q.name', 'custom_queue_processor')
+        ->condition('q.item_id', $item_ids, 'IN')
+        ->condition('q.expire', $lease_time) // Only get items we just claimed
+        ->execute()
+        ->fetchAll();
+
+      // Transaction auto-commits when it goes out of scope.
+      // Items are now locked to us (expire > 0 prevents other processes).
+      unset($transaction);
+      
+      // Verify we didn't get more than batch_size.
+      $items_count = count($ready_items);
+      if ($items_count > $batch_size) {
+        \Drupal::logger('custom_queue_processor')->critical('FATAL: Retrieved MORE than batch_size items! @items > @batch. Truncating.', [
+          '@items' => $items_count,
+          '@batch' => $batch_size,
+        ]);
+        $ready_items = array_slice($ready_items, 0, $batch_size);
+        $items_count = $batch_size;
+      }
+      
+      if (empty($ready_items)) {
+        $lock->release($lock_name);
+        return;
+      }
+    }
+    catch (\Exception $e) {
+      if (isset($transaction)) {
+        $transaction->rollback();
+      }
+      $lock->release($lock_name);
+      \Drupal::logger('custom_queue_processor')->error('Transaction failed during queue item claiming: @message', [
+        '@message' => $e->getMessage(),
+      ]);
+      return;
+    }
+
+    // Log before processing - shows EXACTLY what will be processed.
+    \Drupal::logger('custom_queue_processor')->info('=== CRON RUN START === Total ready: @ready | Batch size setting: @batch | Claimed for processing: @items items', [
+      '@ready' => $total_ready,
+      '@batch' => $batch_size,
+      '@items' => $items_count,
+    ]);
+
+    $queue_worker = \Drupal::service('plugin.manager.queue_worker')->createInstance('custom_queue_processor');
+    $processed_count = 0;
+    $failed_count = 0;
+    $processed_titles = [];
+    $processed_item_ids = [];
+
+    // Process EXACTLY batch_size items - ABSOLUTE LIMIT.
+    // Items are already claimed/locked, so no other process can touch them.
+    foreach ($ready_items as $item) {
+      // ABSOLUTE LIMIT CHECK: Stop immediately if we've processed batch_size items.
+      if ($processed_count >= $batch_size) {
+        \Drupal::logger('custom_queue_processor')->error('ABSOLUTE LIMIT REACHED: Stopped at @count items (batch_size: @batch).', [
+          '@count' => $processed_count,
+          '@batch' => $batch_size,
+        ]);
+        break;
+      }
+
+      // Skip if item ID already processed (shouldn't happen).
+      if (in_array($item->item_id, $processed_item_ids)) {
+        \Drupal::logger('custom_queue_processor')->warning('Skipping duplicate item @id.', ['@id' => $item->item_id]);
+        continue;
+      }
+
+      try {
+        $data = unserialize($item->data);
+        
+        if (!$data) {
+          \Drupal::logger('custom_queue_processor')->warning('Failed to unserialize data for item @id. Skipping.', ['@id' => $item->item_id]);
+          $failed_count++;
+          // Release the claim on failed item so it can be retried later.
+          $database->update('queue')
+            ->fields(['expire' => 0])
+            ->condition('item_id', $item->item_id)
+            ->condition('name', 'custom_queue_processor')
+            ->execute();
+          continue;
+        }
+
+        // Process the item - this creates the Basic Page node.
+        $queue_worker->processItem($data);
+
+        // Delete the processed item from the database.
+        $delete_result = $database->delete('queue')
+          ->condition('item_id', $item->item_id)
+          ->condition('name', 'custom_queue_processor')
+          ->execute();
+
+        if ($delete_result > 0) {
+          $processed_count++;
+          $processed_item_ids[] = $item->item_id;
+          $processed_titles[] = $data['title'] ?? 'Item #' . $item->item_id;
+        }
+        else {
+          \Drupal::logger('custom_queue_processor')->warning('Item @id deletion returned 0 rows (already deleted).', ['@id' => $item->item_id]);
+        }
+      }
+      catch (\Exception $e) {
+        $failed_count++;
+        \Drupal::logger('custom_queue_processor')->error('Failed to process queue item @id: @message', [
+          '@id' => $item->item_id,
+          '@message' => $e->getMessage(),
+        ]);
+        // Release the claim on failed item so it can be retried later.
+        $database->update('queue')
+          ->fields(['expire' => 0])
+          ->condition('item_id', $item->item_id)
+          ->condition('name', 'custom_queue_processor')
+          ->execute();
+      }
+    }
+
+    // Log final results.
+    $remaining = max(0, $total_ready - $processed_count);
+    $log_message = '=== CRON RUN COMPLETE === Processed: @count items | Batch size setting: @batch | Total ready was: @ready';
+    if ($remaining > 0) {
+      $log_message .= ' | @remaining items remain ready (will be processed in next cron)';
+    }
+    if ($failed_count > 0) {
+      $log_message .= ' | @failed items failed';
+    }
+    
+    \Drupal::logger('custom_queue_processor')->info($log_message, [
+      '@count' => $processed_count,
+      '@ready' => $total_ready,
+      '@batch' => $batch_size,
+      '@remaining' => $remaining,
+      '@failed' => $failed_count,
+    ]);
+    
+    // CRITICAL VERIFICATION: Ensure we never processed more than batch_size.
+    if ($processed_count > $batch_size) {
+      \Drupal::logger('custom_queue_processor')->critical('FATAL ERROR: Processed @count items but batch_size is @batch!', [
+        '@count' => $processed_count,
+        '@batch' => $batch_size,
+      ]);
+    }
+    elseif ($processed_count > 0) {
+      \Drupal::logger('custom_queue_processor')->info('✓ Verified: Processed @count items (batch_size: @batch).', [
+        '@count' => $processed_count,
+        '@batch' => $batch_size,
+      ]);
+    }
+
+    // Log processed item IDs for debugging.
+    if ($processed_count <= 10 && $processed_count > 0) {
+      \Drupal::logger('custom_queue_processor')->debug('Processed item IDs: @ids. Titles: @titles', [
+        '@ids' => implode(', ', $processed_item_ids),
+        '@titles' => implode(', ', $processed_titles),
+      ]);
+    }
+  }
+  finally {
+    // Always release the lock.
+    $lock->release($lock_name);
+  }
+
+
+
+
+
+
+
+//   $batch_size = (int) ($config->get('batch_size') ?? 10);
+//   $processing_interval = (int) ($config->get('processing_interval') ?? 60);
+
+//   // Validate batch size.
+//   if ($batch_size <= 0) {
+//     \Drupal::logger('custom_queue_processor')->warning('Invalid batch_size setting: @batch. Skipping queue processing.', [
+//       '@batch' => $batch_size,
+//     ]);
+//     return;
+//   }
+
+//   // CRITICAL: Use a lock to prevent concurrent processing and Drupal's auto-processing.
+//   $lock = \Drupal::lock();
+//   $lock_name = 'custom_queue_processor_cron';
+  
+//   // Try to acquire lock - wait max 5 seconds.
+//   if (!$lock->acquire($lock_name, 5)) {
+//     \Drupal::logger('custom_queue_processor')->warning('Could not acquire lock for queue processing. Another process may be running.');
+//     return;
+//   }
+
+//   try {
+//     $database = \Drupal::database();
+//     $current_time = \Drupal::time()->getCurrentTime();
+//     $ready_time = $current_time - ($processing_interval * 60);
+//     $lease_time = $current_time + 300; // 5 minutes lease to prevent other processes
+
+//     // Count total ready items for logging.
+//     $total_ready = $database->select('queue', 'q')
+//       ->condition('q.name', 'custom_queue_processor')
+//       ->condition('q.created', $ready_time, '<=')
+//       ->condition('q.expire', 0)
+//       ->countQuery()
+//       ->execute()
+//       ->fetchField();
+
+//     if ($total_ready == 0) {
+//       // No ready items, nothing to process.
+//       $lock->release($lock_name);
+//       return;
+//     }
+
+//     // CRITICAL: Get ONLY batch_size items and IMMEDIATELY mark them as claimed (expire > 0).
+//     // This prevents Drupal's automatic queue processing from touching them.
+//     // We use a transaction to ensure atomicity.
+//     $transaction = $database->startTransaction();
+    
+//     try {
+//       // Step 1: Get item IDs of ONLY batch_size items (not all ready items).
+//       $item_ids_query = $database->select('queue', 'q')
+//         ->fields('q', ['item_id'])
+//         ->condition('q.name', 'custom_queue_processor')
+//         ->condition('q.created', $ready_time, '<=')
+//         ->condition('q.expire', 0)
+//         ->orderBy('q.created', 'ASC')
+//         ->range(0, $batch_size); // CRITICAL: Only batch_size items!
+      
+//       $item_ids = $item_ids_query->execute()->fetchCol();
+      
+//       if (empty($item_ids)) {
+//         $transaction->rollback();
+//         $lock->release($lock_name);
+//         return;
+//       }
+
+//       // Step 2: IMMEDIATELY mark these items as claimed (set expire > 0) to prevent other processing.
+//       $claimed_count = $database->update('queue')
+//         ->fields(['expire' => $lease_time])
+//         ->condition('name', 'custom_queue_processor')
+//         ->condition('item_id', $item_ids, 'IN')
+//         ->condition('expire', 0) // Only claim unclaimed items
+//         ->execute();
+
+//       if ($claimed_count == 0) {
+//         // Items were already claimed by another process - this shouldn't happen with lock.
+//         $transaction->rollback();
+//         $lock->release($lock_name);
+//         return;
+//       }
+
+//       // Step 3: Now fetch the full data for claimed items.
+//       $ready_items = $database->select('queue', 'q')
+//         ->fields('q', ['item_id', 'data', 'created'])
+//         ->condition('q.name', 'custom_queue_processor')
+//         ->condition('q.item_id', $item_ids, 'IN')
+//         ->condition('q.expire', $lease_time) // Only get items we just claimed
+//         ->execute()
+//         ->fetchAll();
+
+//       // Transaction auto-commits when it goes out of scope.
+//       // Items are now locked to us (expire > 0 prevents other processes).
+//       unset($transaction);
+      
+//       // Verify we didn't get more than batch_size.
+//       $items_count = count($ready_items);
+//       if ($items_count > $batch_size) {
+//         \Drupal::logger('custom_queue_processor')->critical('FATAL: Retrieved MORE than batch_size items! @items > @batch. Truncating.', [
+//           '@items' => $items_count,
+//           '@batch' => $batch_size,
+//         ]);
+//         $ready_items = array_slice($ready_items, 0, $batch_size);
+//         $items_count = $batch_size;
+//       }
+      
+//       if (empty($ready_items)) {
+//         $lock->release($lock_name);
+//         return;
+//       }
+//     }
+//     catch (\Exception $e) {
+//       if (isset($transaction)) {
+//         $transaction->rollback();
+//       }
+//       $lock->release($lock_name);
+//       \Drupal::logger('custom_queue_processor')->error('Transaction failed during queue item claiming: @message', [
+//         '@message' => $e->getMessage(),
+//       ]);
+//       return;
+//     }
+
+//     // Log before processing - shows EXACTLY what will be processed.
+//     \Drupal::logger('custom_queue_processor')->info('=== CRON RUN START === Total ready: @ready | Batch size setting: @batch | Claimed for processing: @items items', [
+//       '@ready' => $total_ready,
+//       '@batch' => $batch_size,
+//       '@items' => $items_count,
+//     ]);
+
+//     $queue_worker = \Drupal::service('plugin.manager.queue_worker')->createInstance('custom_queue_processor');
+//     $processed_count = 0;
+//     $failed_count = 0;
+//     $processed_titles = [];
+//     $processed_item_ids = [];
+
+//     // Process EXACTLY batch_size items - ABSOLUTE LIMIT.
+//     // Items are already claimed/locked, so no other process can touch them.
+//     foreach ($ready_items as $item) {
+//       // ABSOLUTE LIMIT CHECK: Stop immediately if we've processed batch_size items.
+//       if ($processed_count >= $batch_size) {
+//         \Drupal::logger('custom_queue_processor')->error('ABSOLUTE LIMIT REACHED: Stopped at @count items (batch_size: @batch).', [
+//           '@count' => $processed_count,
+//           '@batch' => $batch_size,
+//         ]);
+//         break;
+//       }
+
+//       // Skip if item ID already processed (shouldn't happen).
+//       if (in_array($item->item_id, $processed_item_ids)) {
+//         \Drupal::logger('custom_queue_processor')->warning('Skipping duplicate item @id.', ['@id' => $item->item_id]);
+//         continue;
+//       }
+
+//       try {
+//         $data = unserialize($item->data);
+        
+//         if (!$data) {
+//           \Drupal::logger('custom_queue_processor')->warning('Failed to unserialize data for item @id. Skipping.', ['@id' => $item->item_id]);
+//           $failed_count++;
+//           // Release the claim on failed item so it can be retried later.
+//           $database->update('queue')
+//             ->fields(['expire' => 0])
+//             ->condition('item_id', $item->item_id)
+//             ->condition('name', 'custom_queue_processor')
+//             ->execute();
+//           continue;
+//         }
+
+//         // Process the item - this creates the Basic Page node.
+//         $queue_worker->processItem($data);
+
+//         // Delete the processed item from the database.
+//         $delete_result = $database->delete('queue')
+//           ->condition('item_id', $item->item_id)
+//           ->condition('name', 'custom_queue_processor')
+//           ->execute();
+
+//         if ($delete_result > 0) {
+//           $processed_count++;
+//           $processed_item_ids[] = $item->item_id;
+//           $processed_titles[] = $data['title'] ?? 'Item #' . $item->item_id;
+//         }
+//         else {
+//           \Drupal::logger('custom_queue_processor')->warning('Item @id deletion returned 0 rows (already deleted).', ['@id' => $item->item_id]);
+//         }
+//       }
+//       catch (\Exception $e) {
+//         $failed_count++;
+//         \Drupal::logger('custom_queue_processor')->error('Failed to process queue item @id: @message', [
+//           '@id' => $item->item_id,
+//           '@message' => $e->getMessage(),
+//         ]);
+//         // Release the claim on failed item so it can be retried later.
+//         $database->update('queue')
+//           ->fields(['expire' => 0])
+//           ->condition('item_id', $item->item_id)
+//           ->condition('name', 'custom_queue_processor')
+//           ->execute();
+//       }
+//     }
+
+//     // Log final results.
+//     $remaining = max(0, $total_ready - $processed_count);
+//     $log_message = '=== CRON RUN COMPLETE === Processed: @count items | Batch size setting: @batch | Total ready was: @ready';
+//     if ($remaining > 0) {
+//       $log_message .= ' | @remaining items remain ready (will be processed in next cron)';
+//     }
+//     if ($failed_count > 0) {
+//       $log_message .= ' | @failed items failed';
+//     }
+    
+//     \Drupal::logger('custom_queue_processor')->info($log_message, [
+//       '@count' => $processed_count,
+//       '@ready' => $total_ready,
+//       '@batch' => $batch_size,
+//       '@remaining' => $remaining,
+//       '@failed' => $failed_count,
+//     ]);
+    
+//     // CRITICAL VERIFICATION: Ensure we never processed more than batch_size.
+//     if ($processed_count > $batch_size) {
+//       \Drupal::logger('custom_queue_processor')->critical('FATAL ERROR: Processed @count items but batch_size is @batch!', [
+//         '@count' => $processed_count,
+//         '@batch' => $batch_size,
+//       ]);
+//     }
+//     elseif ($processed_count > 0) {
+//       \Drupal::logger('custom_queue_processor')->info('✓ Verified: Processed @count items (batch_size: @batch).', [
+//         '@count' => $processed_count,
+//         '@batch' => $batch_size,
+//       ]);
+//     }
+
+//     // Log processed item IDs for debugging.
+//     if ($processed_count <= 10 && $processed_count > 0) {
+//       \Drupal::logger('custom_queue_processor')->debug('Processed item IDs: @ids. Titles: @titles', [
+//         '@ids' => implode(', ', $processed_item_ids),
+//         '@titles' => implode(', ', $processed_titles),
+//       ]);
+//     }
+//   }
+//   finally {
+//     // Always release the lock.
+//     $lock->release($lock_name);
+//   }
+}
+
+

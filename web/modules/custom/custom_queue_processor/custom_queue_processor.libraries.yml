@@ -1,0 +1,7 @@
+queue_processor:
+  css:
+    theme:
+      css/queue-processor.css: {}
+  js:
+    js/queue-processor.js: {}
+

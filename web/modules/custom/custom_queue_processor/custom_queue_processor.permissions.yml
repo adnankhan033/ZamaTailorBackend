@@ -1,0 +1,8 @@
+access queue processor:
+  title: 'Access Queue Processor'
+  description: 'View queue processor listing page'
+
+administer queue processor:
+  title: 'Administer Queue Processor'
+  description: 'Create dummy records, process items, and configure settings'
+

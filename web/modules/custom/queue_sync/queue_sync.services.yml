@@ -1,0 +1,13 @@
+services:
+  queue_sync.runner:
+    class: Drupal\queue_sync\Service\BatchRunner
+    arguments: ['@database', '@queue', '@config.factory', '@logger.factory']
+    public: true
+
+  queue_sync.user_sync:
+    class: Drupal\queue_sync\Service\UserSyncService
+    arguments: ['@database', '@entity_type.manager', '@logger.factory']
+
+  queue_sync.capacity_manager:
+    class: Drupal\queue_sync\Service\CapacityManager
+    arguments: ['@logger.factory']

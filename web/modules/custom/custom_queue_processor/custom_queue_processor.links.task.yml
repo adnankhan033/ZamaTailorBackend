@@ -1,0 +1,28 @@
+custom_queue_processor.overview:
+  route_name: custom_queue_processor.overview
+  title: 'Overview'
+  description: 'View queue statistics and overview'
+  base_route: custom_queue_processor.overview
+  weight: 0
+
+custom_queue_processor.list:
+  route_name: custom_queue_processor.list
+  title: 'Queue Items'
+  description: 'View and manage all queue items'
+  base_route: custom_queue_processor.overview
+  weight: 1
+
+custom_queue_processor.process_form:
+  route_name: custom_queue_processor.process_form
+  title: 'Process Item'
+  description: 'Process a specific queue item by ID'
+  base_route: custom_queue_processor.overview
+  weight: 2
+
+custom_queue_processor.config:
+  route_name: custom_queue_processor.config
+  title: 'Settings'
+  description: 'Configure processing intervals and settings'
+  base_route: custom_queue_processor.overview
+  weight: 3
+
