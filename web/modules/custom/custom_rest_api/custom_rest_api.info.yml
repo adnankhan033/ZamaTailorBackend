@@ -1,0 +1,12 @@
+name: 'Custom REST API'
+type: module
+description: 'Custom module for login REST API with JWT authentication'
+core_version_requirement: ^10 || ^11
+package: Custom
+dependencies:
+  - drupal:rest
+  - drupal:serialization
+  - drupal:user
+  - jwt:jwt
+  - jwt:jwt_auth_consumer
+

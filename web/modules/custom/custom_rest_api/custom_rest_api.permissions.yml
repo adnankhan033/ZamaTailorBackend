@@ -1,0 +1,10 @@
+restful post login_resource:
+  title: 'Use login resource REST resource'
+  description: 'Access the custom login REST resource'
+  restrict access: false
+
+restful post article_resource:
+  title: 'Use article resource REST resource'
+  description: 'Create articles via the custom article REST resource'
+  restrict access: true
+

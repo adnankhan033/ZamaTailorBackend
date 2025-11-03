@@ -1,0 +1,6 @@
+services:
+  custom_rest_api.jwt_blacklist_subscriber:
+    class: Drupal\custom_rest_api\EventSubscriber\JwtBlacklistSubscriber
+    tags:
+      - { name: event_subscriber }
+
