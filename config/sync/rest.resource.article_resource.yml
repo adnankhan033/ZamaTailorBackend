@@ -18,18 +18,22 @@ configuration:
       - json
     supported_auth:
       - jwt_auth
+      - cookie
   POST:
     supported_formats:
       - json
     supported_auth:
       - jwt_auth
-  PATCH:
-    supported_formats:
-      - json
-    supported_auth:
-      - jwt_auth
+      - cookie
   DELETE:
     supported_formats:
       - json
     supported_auth:
       - jwt_auth
+      - cookie
+  PATCH:
+    supported_formats:
+      - json
+    supported_auth:
+      - jwt_auth
+      - cookie
