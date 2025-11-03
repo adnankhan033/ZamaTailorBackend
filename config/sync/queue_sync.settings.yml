@@ -1,5 +1,11 @@
-items_per_run: 5
+items_per_run: 1000
 default_delay_minutes: 1
 max_batches_per_run: 20
 auto_publish: true
 node_type: page
+bulk_process_size: 10
+memory_threshold_mb: 128
+user_chunk_size: 100
+max_memory_usage_mb: 256
+min_chunk_size: 10
+max_chunk_size: 1000
