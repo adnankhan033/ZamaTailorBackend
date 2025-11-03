@@ -1,0 +1,61 @@
+<?php
+
+/**
+ * @file
+ * Install, update and uninstall functions for the custom_rest_api module.
+ */
+
+/**
+ * Implements hook_install().
+ */
+function custom_rest_api_install() {
+  // Grant anonymous users permission to access the login resource
+  // This is required because users must authenticate before getting a JWT token
+  $anonymous_role = \Drupal\user\Entity\Role::load(\Drupal\user\RoleInterface::ANONYMOUS_ID);
+  
+  if ($anonymous_role) {
+    $anonymous_role->grantPermission('restful post login_resource');
+    $anonymous_role->save();
+  }
+
+  // Grant authenticated users permissions for logout and article resources
+  $authenticated_role = \Drupal\user\Entity\Role::load(\Drupal\user\RoleInterface::AUTHENTICATED_ID);
+  
+  if ($authenticated_role) {
+    $authenticated_role->grantPermission('restful post logout_resource');
+    $authenticated_role->grantPermission('restful get article_resource');
+    $authenticated_role->grantPermission('restful post article_resource');
+    $authenticated_role->grantPermission('restful patch article_resource');
+    $authenticated_role->grantPermission('restful delete article_resource');
+    $authenticated_role->save();
+  }
+
+  // Rebuild routes to register the REST endpoint
+  \Drupal::service('router.builder')->rebuild();
+}
+
+/**
+ * Implements hook_uninstall().
+ */
+function custom_rest_api_uninstall() {
+  // Optionally revoke the permission when module is uninstalled
+  $anonymous_role = \Drupal\user\Entity\Role::load(\Drupal\user\RoleInterface::ANONYMOUS_ID);
+  
+  if ($anonymous_role) {
+    $anonymous_role->revokePermission('restful post login_resource');
+    $anonymous_role->save();
+  }
+
+  // Revoke logout and article resource permissions
+  $authenticated_role = \Drupal\user\Entity\Role::load(\Drupal\user\RoleInterface::AUTHENTICATED_ID);
+  
+  if ($authenticated_role) {
+    $authenticated_role->revokePermission('restful post logout_resource');
+    $authenticated_role->revokePermission('restful get article_resource');
+    $authenticated_role->revokePermission('restful post article_resource');
+    $authenticated_role->revokePermission('restful patch article_resource');
+    $authenticated_role->revokePermission('restful delete article_resource');
+    $authenticated_role->save();
+  }
+}
+

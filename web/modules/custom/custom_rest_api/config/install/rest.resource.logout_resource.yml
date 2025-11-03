@@ -1,0 +1,22 @@
+uuid: custom-logout-resource-uuid
+langcode: en
+status: true
+dependencies:
+  module:
+    - jwt
+    - jwt_auth_consumer
+    - serialization
+    - user
+    - custom_rest_api
+_core:
+  default_config_hash: custom_logout_resource
+id: logout_resource
+plugin_id: logout_resource
+granularity: method
+configuration:
+  POST:
+    supported_formats:
+      - json
+    supported_auth:
+      - jwt_auth
+

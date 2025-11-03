@@ -1,0 +1,14 @@
+uuid: 8b4ae96a-19a2-4c16-a51f-0464200d35ed
+langcode: en
+status: true
+dependencies:
+  config:
+    - user.role.tailor
+  module:
+    - user
+id: user_remove_role_action.tailor
+label: 'Remove the Tailor role from the selected user(s)'
+type: user
+plugin: user_remove_role_action
+configuration:
+  rid: tailor

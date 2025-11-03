@@ -1,0 +1,21 @@
+uuid: custom-login-resource-uuid
+langcode: en
+status: true
+dependencies:
+  module:
+    - custom_rest_api
+    - jwt
+    - serialization
+    - user
+_core:
+  default_config_hash: RvtT9T5QQWX7d5GJoggL61FRcnUmiuaoNOpWNKQWYk0
+id: login_resource
+plugin_id: login_resource
+granularity: method
+configuration:
+  POST:
+    supported_formats:
+      - json
+    supported_auth:
+      - jwt_auth
+      - cookie

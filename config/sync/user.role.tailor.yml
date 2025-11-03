@@ -1,0 +1,15 @@
+uuid: d3a59d85-91e6-47f7-966c-c59636adb372
+langcode: en
+status: true
+dependencies:
+  module:
+    - custom_rest_api
+id: tailor
+label: Tailor
+weight: 4
+is_admin: null
+permissions:
+  - 'restful get article_resource'
+  - 'restful patch article_resource'
+  - 'restful post article_resource'
+  - 'restful post logout_resource'
