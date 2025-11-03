@@ -1,0 +1,39 @@
+uuid: 372dd305-042a-4b32-887d-6179aa53ce14
+langcode: en
+status: true
+dependencies:
+  config:
+    - field.field.node.customer_profile.body
+    - field.field.node.customer_profile.field_kamees_shalwar
+    - node.type.customer_profile
+  module:
+    - entity_reference_revisions
+    - text
+    - user
+id: node.customer_profile.default
+targetEntityType: node
+bundle: customer_profile
+mode: default
+content:
+  body:
+    type: text_default
+    label: hidden
+    settings: {  }
+    third_party_settings: {  }
+    weight: 101
+    region: content
+  field_kamees_shalwar:
+    type: entity_reference_revisions_entity_view
+    label: above
+    settings:
+      view_mode: default
+      link: ''
+    third_party_settings: {  }
+    weight: 102
+    region: content
+  links:
+    settings: {  }
+    third_party_settings: {  }
+    weight: 100
+    region: content
+hidden: {  }

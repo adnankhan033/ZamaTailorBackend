@@ -1,0 +1,22 @@
+uuid: 19c1e34c-0657-48c0-8196-2179a361d643
+langcode: en
+status: true
+dependencies:
+  config:
+    - node.type.customer_profile
+id: node.customer_profile.promote
+field_name: promote
+entity_type: node
+bundle: customer_profile
+label: 'Promoted to front page'
+description: ''
+required: false
+translatable: true
+default_value:
+  -
+    value: 0
+default_value_callback: ''
+settings:
+  on_label: 'On'
+  off_label: 'Off'
+field_type: boolean

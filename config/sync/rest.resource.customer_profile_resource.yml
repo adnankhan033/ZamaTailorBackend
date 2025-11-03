@@ -1,4 +1,4 @@
-uuid: custom-customer-profile-resource-uuid
+uuid: 416692c4-7b58-4898-b19a-78b802f3d054
 langcode: en
 status: true
 dependencies:
@@ -7,34 +7,17 @@ dependencies:
     - jwt
     - serialization
     - user
-_core:
-  default_config_hash: custom_customer_profile_resource
 id: customer_profile_resource
 plugin_id: customer_profile_resource
-granularity: method
+granularity: resource
 configuration:
-  GET:
-    supported_formats:
-      - json
-    supported_auth:
-      - jwt_auth
-      - cookie
-  POST:
-    supported_formats:
-      - json
-    supported_auth:
-      - jwt_auth
-      - cookie
-  DELETE:
-    supported_formats:
-      - json
-    supported_auth:
-      - jwt_auth
-      - cookie
-  PATCH:
-    supported_formats:
-      - json
-    supported_auth:
-      - jwt_auth
-      - cookie
-
+  methods:
+    - GET
+    - POST
+    - DELETE
+    - PATCH
+  formats:
+    - json
+  authentication:
+    - jwt_auth
+    - cookie

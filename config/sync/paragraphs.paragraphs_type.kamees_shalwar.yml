@@ -1,0 +1,10 @@
+uuid: 2c3e85c7-2b77-42db-b9c2-af5cce27719c
+langcode: en
+status: true
+dependencies: {  }
+id: kamees_shalwar
+label: kamees_shalwar
+icon_uuid: null
+icon_default: null
+description: ''
+behavior_plugins: {  }

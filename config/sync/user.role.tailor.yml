@@ -2,14 +2,22 @@ uuid: d3a59d85-91e6-47f7-966c-c59636adb372
 langcode: en
 status: true
 dependencies:
+  config:
+    - node.type.customer_profile
   module:
     - custom_rest_api
+    - node
 id: tailor
 label: Tailor
 weight: 4
 is_admin: null
 permissions:
+  - 'edit own customer_profile content'
+  - 'restful delete customer_profile_resource'
   - 'restful get article_resource'
+  - 'restful get customer_profile_resource'
   - 'restful patch article_resource'
+  - 'restful patch customer_profile_resource'
   - 'restful post article_resource'
+  - 'restful post customer_profile_resource'
   - 'restful post logout_resource'
