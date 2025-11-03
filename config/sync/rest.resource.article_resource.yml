@@ -6,6 +6,7 @@ dependencies:
     - custom_rest_api
     - jwt
     - serialization
+    - user
 _core:
   default_config_hash: mW7DYFTST8urEOJu1PYgU2bkEul5a82Yr3N8rsq3948
 id: article_resource
@@ -17,3 +18,4 @@ configuration:
       - json
     supported_auth:
       - jwt_auth
+      - cookie
