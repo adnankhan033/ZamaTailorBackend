@@ -122,18 +122,106 @@ class CustomerProfileResource extends ResourceBase {
       return NULL;
     }
 
+    // Try to find by field_local_app_unique_id
+    // First try without uid filter to find the record
     $query = \Drupal::entityQuery('node')
       ->condition('type', 'customer_profile')
       ->condition('field_local_app_unique_id', $local_app_unique_id)
-      ->condition('uid', $this->currentUser->id())
       ->accessCheck(FALSE)
       ->range(0, 1);
 
     $nids = $query->execute();
 
+    if (empty($nids)) {
+      // Try direct database query as fallback (in case entity query has issues)
+      try {
+        $connection = \Drupal::database();
+        // Try to find via direct SQL query on field storage table
+        $field_storage_table = 'node__field_local_app_unique_id';
+        if ($connection->schema()->tableExists($field_storage_table)) {
+          $db_query = $connection->select($field_storage_table, 'f')
+            ->fields('f', ['entity_id'])
+            ->condition('field_local_app_unique_id_value', $local_app_unique_id)
+            ->range(0, 1);
+          
+          $db_nids = $db_query->execute()->fetchCol();
+          if (!empty($db_nids)) {
+            $nids = $db_nids;
+            $this->logger->info('Found customer profile via direct database query: @unique_id, nid: @nid', [
+              '@unique_id' => $local_app_unique_id,
+              '@nid' => reset($nids),
+            ]);
+          }
+        }
+      }
+      catch (\Exception $e) {
+        $this->logger->warning('Direct database query failed: @message', [
+          '@message' => $e->getMessage(),
+        ]);
+      }
+
+      // If still not found, try loading all customer profiles and checking manually
+      if (empty($nids)) {
+        $query2 = \Drupal::entityQuery('node')
+          ->condition('type', 'customer_profile')
+          ->condition('uid', $this->currentUser->id())
+          ->accessCheck(FALSE)
+          ->range(0, 100); // Limit to reasonable number
+        
+        $all_nids = $query2->execute();
+        if (!empty($all_nids)) {
+          foreach ($all_nids as $test_nid) {
+            $test_profile = Node::load($test_nid);
+            if ($test_profile && $test_profile->hasField('field_local_app_unique_id')) {
+              $test_unique_id = $test_profile->get('field_local_app_unique_id')->isEmpty() 
+                ? NULL 
+                : $test_profile->get('field_local_app_unique_id')->value;
+              
+              if ($test_unique_id === $local_app_unique_id) {
+                $nids = [$test_nid];
+                $this->logger->info('Found customer profile via manual check: @unique_id, nid: @nid', [
+                  '@unique_id' => $local_app_unique_id,
+                  '@nid' => $test_nid,
+                ]);
+                break;
+              }
+            }
+          }
+        }
+      }
+    }
+
     if (!empty($nids)) {
       $nid = reset($nids);
-      return Node::load($nid);
+      $customer_profile = Node::load($nid);
+      
+      if (!$customer_profile) {
+        $this->logger->warning('Customer profile node @nid could not be loaded', ['@nid' => $nid]);
+        return NULL;
+      }
+      
+      // Verify it belongs to current user
+      if ($customer_profile->getOwnerId() == $this->currentUser->id()) {
+        $this->logger->info('Found customer profile by field_local_app_unique_id: @unique_id, nid: @nid', [
+          '@unique_id' => $local_app_unique_id,
+          '@nid' => $nid,
+        ]);
+        return $customer_profile;
+      }
+      else {
+        $this->logger->warning('Customer profile found by field_local_app_unique_id but belongs to different user: @unique_id, nid: @nid, owner: @owner, current: @current', [
+          '@unique_id' => $local_app_unique_id,
+          '@nid' => $nid,
+          '@owner' => $customer_profile->getOwnerId(),
+          '@current' => $this->currentUser->id(),
+        ]);
+      }
+    }
+    else {
+      $this->logger->warning('No customer profile found by field_local_app_unique_id: @unique_id for user @uid', [
+        '@unique_id' => $local_app_unique_id,
+        '@uid' => $this->currentUser->id(),
+      ]);
     }
 
     return NULL;
@@ -273,11 +361,17 @@ class CustomerProfileResource extends ResourceBase {
    *   Thrown when user doesn't have permission.
    */
   public function post(array $data) {
+    // Log that this is a POST (CREATE) method, not PATCH (UPDATE)
+    $request = \Drupal::request();
+    $this->logger->info('=== POST METHOD CALLED (CREATE OPERATION) === Method: @method, Path: @path', [
+      '@method' => $request->getMethod(),
+      '@path' => $request->getPathInfo(),
+    ]);
+
     // Check if user is authenticated first
     // Note: We check auth status BEFORE logging to avoid showing Anonymous user
     // in logs before Drupal's auth listeners have run
     if ($this->currentUser->isAnonymous()) {
-      $request = \Drupal::request();
       $auth_header = $request->headers->get('Authorization');
       $this->logger->error('Access denied: User is anonymous. Auth header: @header', [
         '@header' => $auth_header ? 'present' : 'missing',
@@ -287,7 +381,7 @@ class CustomerProfileResource extends ResourceBase {
 
     // Log request only after confirming user is authenticated
     // This prevents duplicate log entries (Anonymous followed by authenticated user)
-    $this->logger->info('Customer profile creation request from authenticated user: @username', [
+    $this->logger->info('Customer profile CREATE (POST) request from authenticated user: @username', [
       '@username' => $this->currentUser->getAccountName(),
       'uid' => (int) $this->currentUser->id(),
     ]);
@@ -301,6 +395,19 @@ class CustomerProfileResource extends ResourceBase {
     if (empty($title)) {
       $this->logger->warning('Customer profile creation attempt with missing title');
       throw new BadRequestHttpException('Title is required.');
+    }
+
+    // Check if profile with field_local_app_unique_id already exists
+    // If it exists, this should be an update (PATCH), not a create (POST)
+    if (!empty($data['field_local_app_unique_id'])) {
+      $existing_profile = $this->findCustomerProfileByLocalAppId($data['field_local_app_unique_id']);
+      if ($existing_profile) {
+        $this->logger->warning('Customer profile creation attempt but profile already exists with field_local_app_unique_id: @unique_id. Use PATCH to update.', [
+          '@unique_id' => $data['field_local_app_unique_id'],
+          '@nid' => $existing_profile->id(),
+        ]);
+        throw new BadRequestHttpException('A customer profile with this unique ID already exists. Use PATCH method to update the existing profile.');
+      }
     }
 
     // Validate phone number uniqueness if provided (per user)
@@ -480,6 +587,15 @@ class CustomerProfileResource extends ResourceBase {
    *   Thrown when the customer profile is not found.
    */
   public function patch($nid, array $data) {
+    // Log that this is a PATCH (UPDATE) method, not POST (CREATE)
+    $request = \Drupal::request();
+    $this->logger->info('=== PATCH METHOD CALLED (UPDATE OPERATION) === Identifier: @identifier, Method: @method, Path: @path', [
+      '@identifier' => $nid,
+      '@method' => $request->getMethod(),
+      '@path' => $request->getPathInfo(),
+      '@username' => $this->currentUser->getAccountName(),
+    ]);
+
     // Check if user is authenticated
     if ($this->currentUser->isAnonymous()) {
       $this->logger->error('Access denied: User is anonymous for PATCH request');
@@ -487,23 +603,38 @@ class CustomerProfileResource extends ResourceBase {
     }
 
     try {
+      $this->logger->info('Customer profile UPDATE (PATCH) request for identifier @identifier from user: @username', [
+        '@identifier' => $nid,
+        '@username' => $this->currentUser->getAccountName(),
+      ]);
+
       // Try to find customer profile by field_local_app_unique_id from route parameter
       $customer_profile = $this->findCustomerProfileByLocalAppId($nid);
 
       // Fall back to node ID if not found by field_local_app_unique_id
       if (!$customer_profile && is_numeric($nid)) {
         $customer_profile = Node::load($nid);
+        if ($customer_profile && $customer_profile->getOwnerId() != $this->currentUser->id()) {
+          $this->logger->warning('Customer profile found by nid but belongs to different user: @nid', ['@nid' => $nid]);
+          $customer_profile = NULL;
+        }
       }
-
-      $this->logger->info('Customer profile update request for identifier @identifier from user: @username', [
-        '@identifier' => $nid,
-        '@username' => $this->currentUser->getAccountName(),
-      ]);
 
       // Check if customer profile exists
       if (!$customer_profile || $customer_profile->bundle() !== 'customer_profile') {
-        $this->logger->warning('Customer profile not found for update: @identifier', ['@identifier' => $nid]);
-        throw new NotFoundHttpException('Customer profile not found.');
+        // CRITICAL: Never create a new node in PATCH - this is an update operation only
+        $this->logger->error('Customer profile not found for PATCH update: @identifier. This is an UPDATE operation - will NOT create new record. Use POST to create.', [
+          '@identifier' => $nid,
+          'user_id' => $this->currentUser->id(),
+          'username' => $this->currentUser->getAccountName(),
+        ]);
+        throw new NotFoundHttpException('Customer profile not found for update. Profile with identifier "' . $nid . '" does not exist. Use POST method at /api/tailor/customer_profile to create a new profile.');
+      }
+
+      // Double-check: Make sure we're updating, not creating
+      if (!$customer_profile->id() || $customer_profile->isNew()) {
+        $this->logger->error('CRITICAL: Attempted to update a new/unsaved node. This should never happen in PATCH method.');
+        throw new BadRequestHttpException('Invalid node state for update operation.');
       }
 
       // Check if user has permission to update this customer profile
@@ -519,14 +650,41 @@ class CustomerProfileResource extends ResourceBase {
       $node_id = $customer_profile->id();
 
       // Validate phone number uniqueness if provided (per user, exclude current node)
+      // Only check if phone number is being changed
+      $current_phone = $customer_profile->hasField('field_phone') && !$customer_profile->get('field_phone')->isEmpty()
+        ? $customer_profile->get('field_phone')->value
+        : NULL;
+      
       if (isset($data['field_phone']) && !empty($data['field_phone']) && $customer_profile->hasField('field_phone')) {
-        if ($this->checkPhoneExists($data['field_phone'], $node_id)) {
-          $this->logger->warning('Customer profile update attempt with duplicate phone number: @phone for nid @nid, user @uid', [
-            '@phone' => $data['field_phone'],
-            '@nid' => $node_id,
-            '@uid' => $this->currentUser->id(),
-          ]);
-          throw new BadRequestHttpException('Phone number already exists in your customer profiles. Please use a different phone number.');
+        // Only validate if phone number is different from current
+        if ($current_phone !== $data['field_phone']) {
+          if ($this->checkPhoneExists($data['field_phone'], $node_id)) {
+            $this->logger->warning('Customer profile update attempt with duplicate phone number: @phone for nid @nid, user @uid', [
+              '@phone' => $data['field_phone'],
+              '@nid' => $node_id,
+              '@uid' => $this->currentUser->id(),
+            ]);
+            throw new BadRequestHttpException('Phone number already exists in your customer profiles. Please use a different phone number.');
+          }
+        }
+      }
+
+      // Validate that field_local_app_unique_id is unique (if being changed)
+      // The field_local_app_unique_id should NOT change on update, but if it does, check uniqueness
+      $current_unique_id = $customer_profile->hasField('field_local_app_unique_id') && !$customer_profile->get('field_local_app_unique_id')->isEmpty()
+        ? $customer_profile->get('field_local_app_unique_id')->value
+        : NULL;
+      
+      if (isset($data['field_local_app_unique_id']) && !empty($data['field_local_app_unique_id'])) {
+        // If unique ID is being changed, check if new one already exists
+        if ($current_unique_id !== $data['field_local_app_unique_id']) {
+          $existing_profile = $this->findCustomerProfileByLocalAppId($data['field_local_app_unique_id']);
+          if ($existing_profile && $existing_profile->id() != $node_id) {
+            $this->logger->warning('Customer profile update attempt with duplicate field_local_app_unique_id: @unique_id', [
+              '@unique_id' => $data['field_local_app_unique_id'],
+            ]);
+            throw new BadRequestHttpException('The unique ID already exists in another customer profile.');
+          }
         }
       }
 
@@ -544,9 +702,34 @@ class CustomerProfileResource extends ResourceBase {
         ]);
       }
 
-      // Update field_local_app_unique_id from request data
-      if (isset($data['field_local_app_unique_id']) && $customer_profile->hasField('field_local_app_unique_id')) {
-        $customer_profile->set('field_local_app_unique_id', $data['field_local_app_unique_id']);
+      // Update field_local_app_unique_id from request data (if provided and different)
+      // Note: field_local_app_unique_id should typically NOT change, but we allow it if explicitly provided
+      if (isset($data['field_local_app_unique_id']) && !empty($data['field_local_app_unique_id']) && $customer_profile->hasField('field_local_app_unique_id')) {
+        // Only update if it's different from current value
+        $current_unique_id = $customer_profile->get('field_local_app_unique_id')->isEmpty() 
+          ? NULL 
+          : $customer_profile->get('field_local_app_unique_id')->value;
+        
+        if ($current_unique_id !== $data['field_local_app_unique_id']) {
+          $this->logger->info('Updating field_local_app_unique_id from @old to @new for nid @nid', [
+            '@old' => $current_unique_id ?? 'empty',
+            '@new' => $data['field_local_app_unique_id'],
+            '@nid' => $customer_profile->id(),
+          ]);
+          $customer_profile->set('field_local_app_unique_id', $data['field_local_app_unique_id']);
+        }
+      }
+      // If field_local_app_unique_id is not provided in update, ensure it's preserved
+      elseif ($customer_profile->hasField('field_local_app_unique_id') && $customer_profile->get('field_local_app_unique_id')->isEmpty()) {
+        // If current profile has no unique_id, try to generate one from phone and user
+        if (!empty($data['field_phone']) || ($customer_profile->hasField('field_phone') && !$customer_profile->get('field_phone')->isEmpty())) {
+          $phone = !empty($data['field_phone']) ? $data['field_phone'] : $customer_profile->get('field_phone')->value;
+          $unique_id = $this->currentUser->id() . '_' . preg_replace('/\D/', '', $phone);
+          $customer_profile->set('field_local_app_unique_id', $unique_id);
+          $this->logger->info('Generated field_local_app_unique_id for existing profile: @unique_id', [
+            '@unique_id' => $unique_id,
+          ]);
+        }
       }
       
       // Update field field_phone 
@@ -613,8 +796,40 @@ class CustomerProfileResource extends ResourceBase {
         }
       }
 
-      // Save the customer profile
+      // CRITICAL: Verify we're updating an existing node, not creating a new one
+      // This is the final safety check before saving
+      if ($customer_profile->isNew()) {
+        $this->logger->error('CRITICAL ERROR: Attempted to save a NEW node in PATCH method. Node should already exist!');
+        throw new BadRequestHttpException('Cannot create new node in PATCH method. This is an update operation only. Node ID: ' . ($customer_profile->id() ?? 'NULL'));
+      }
+
+      // Verify the node ID exists and is valid (must be > 0)
+      $existing_node_id = $customer_profile->id();
+      if (!$existing_node_id || $existing_node_id <= 0) {
+        $this->logger->error('CRITICAL ERROR: Node has invalid ID: @id', ['@id' => $existing_node_id]);
+        throw new BadRequestHttpException('Invalid node ID for update operation. ID: ' . ($existing_node_id ?? 'NULL'));
+      }
+
+      // Log the update operation with details
+      $this->logger->info('Updating existing customer profile node @nid (NOT creating new). Unique ID: @unique_id, Changes: @changes', [
+        '@nid' => $existing_node_id,
+        '@unique_id' => $customer_profile->hasField('field_local_app_unique_id') && !$customer_profile->get('field_local_app_unique_id')->isEmpty()
+          ? $customer_profile->get('field_local_app_unique_id')->value
+          : 'N/A',
+        '@changes' => implode(', ', array_keys(array_filter($data))),
+      ]);
+
+      // Save the customer profile (UPDATE operation - this should NOT create a new node)
       $customer_profile->save();
+
+      // Verify after save that it's still the same node (not a new one)
+      if ($customer_profile->id() != $existing_node_id) {
+        $this->logger->error('CRITICAL ERROR: Node ID changed after save! Original: @original, New: @new', [
+          '@original' => $existing_node_id,
+          '@new' => $customer_profile->id(),
+        ]);
+        throw new BadRequestHttpException('Node ID changed after save. This should never happen in an update operation.');
+      }
 
       // Log successful update
       $this->logger->info('Customer profile updated successfully: @nid by user @username', [

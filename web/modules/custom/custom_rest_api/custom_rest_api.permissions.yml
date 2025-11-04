@@ -48,3 +48,8 @@ restful delete customer_profile_resource:
   title: 'Delete customer profile resource REST resource'
   description: 'Delete customer profiles via the custom customer profile REST resource'
   restrict access: true
+
+restful post customer_profile_sync_resource:
+  title: 'Use customer profile sync resource REST resource'
+  description: 'Sync customer profiles via the queue sync REST resource'
+  restrict access: true
