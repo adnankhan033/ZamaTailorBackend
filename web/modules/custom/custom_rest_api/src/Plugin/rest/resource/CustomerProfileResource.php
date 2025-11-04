@@ -77,10 +77,73 @@ class CustomerProfileResource extends ResourceBase {
   }
 
   /**
+   * Checks if a phone number already exists in customer profiles for the current user.
+   *
+   * @param string $phone
+   *   The phone number to check.
+   * @param int $exclude_nid
+   *   Optional. Node ID to exclude from the check (for update operations).
+   *
+   * @return bool
+   *   TRUE if phone exists, FALSE otherwise.
+   */
+  protected function checkPhoneExists($phone, $exclude_nid = NULL) {
+    if (empty($phone)) {
+      return FALSE;
+    }
+
+    $query = \Drupal::entityQuery('node')
+      ->condition('type', 'customer_profile')
+      ->condition('field_phone', $phone)
+      ->condition('uid', $this->currentUser->id())
+      ->accessCheck(FALSE);
+
+    // Exclude current node if updating
+    if ($exclude_nid) {
+      $query->condition('nid', $exclude_nid, '<>');
+    }
+
+    $nids = $query->execute();
+
+    return !empty($nids);
+  }
+
+  /**
+   * Finds a customer profile node by field_local_app_unique_id for the current user.
+   *
+   * @param string $local_app_unique_id
+   *   The local app unique ID to search for.
+   *
+   * @return \Drupal\node\Entity\Node|null
+   *   The customer profile node if found, NULL otherwise.
+   */
+  protected function findCustomerProfileByLocalAppId($local_app_unique_id) {
+    if (empty($local_app_unique_id)) {
+      return NULL;
+    }
+
+    $query = \Drupal::entityQuery('node')
+      ->condition('type', 'customer_profile')
+      ->condition('field_local_app_unique_id', $local_app_unique_id)
+      ->condition('uid', $this->currentUser->id())
+      ->accessCheck(FALSE)
+      ->range(0, 1);
+
+    $nids = $query->execute();
+
+    if (!empty($nids)) {
+      $nid = reset($nids);
+      return Node::load($nid);
+    }
+
+    return NULL;
+  }
+
+  /**
    * Responds to GET requests for retrieving a customer profile.
    *
-   * @param int $nid
-   *   The customer profile node ID.
+   * @param string $nid
+   *   The customer profile field_local_app_unique_id or node ID.
    *
    * @return \Drupal\rest\ResourceResponse
    *   The HTTP response object with customer profile data.
@@ -97,18 +160,23 @@ class CustomerProfileResource extends ResourceBase {
       throw new AccessDeniedHttpException('Authentication required.');
     }
 
-    $this->logger->info('Customer profile retrieval request for nid @nid from user: @username', [
-      '@nid' => $nid,
-      '@username' => $this->currentUser->getAccountName(),
-    ]);
-
     try {
-      // Load the customer profile node
-      $customer_profile = Node::load($nid);
+      // Try to find customer profile by field_local_app_unique_id first
+      $customer_profile = $this->findCustomerProfileByLocalAppId($nid);
+
+      // Fall back to node ID if not found by field_local_app_unique_id
+      if (!$customer_profile && is_numeric($nid)) {
+        $customer_profile = Node::load($nid);
+      }
+
+      $this->logger->info('Customer profile retrieval request for identifier @identifier from user: @username', [
+        '@identifier' => $nid,
+        '@username' => $this->currentUser->getAccountName(),
+      ]);
 
       // Check if customer profile exists
       if (!$customer_profile || $customer_profile->bundle() !== 'customer_profile') {
-        $this->logger->warning('Customer profile not found: @nid', ['@nid' => $nid]);
+        $this->logger->warning('Customer profile not found: @identifier', ['@identifier' => $nid]);
         throw new NotFoundHttpException('Customer profile not found.');
       }
 
@@ -134,7 +202,11 @@ class CustomerProfileResource extends ResourceBase {
         ],
       ];
 
-      
+      // add field field_local_app_unique_id
+      if ($customer_profile->hasField('field_local_app_unique_id') && !$customer_profile->get('field_local_app_unique_id')->isEmpty()) {
+        $response_data['field_local_app_unique_id'] = $customer_profile->get('field_local_app_unique_id')->value;
+      }
+
       if ($customer_profile->hasField('field_address') && !$customer_profile->get('field_address')->isEmpty()) {
         $address = $customer_profile->get('field_address')->getValue();
         $response_data['field_address'] = $address[0]['value'];
@@ -231,6 +303,17 @@ class CustomerProfileResource extends ResourceBase {
       throw new BadRequestHttpException('Title is required.');
     }
 
+    // Validate phone number uniqueness if provided (per user)
+    if (!empty($data['field_phone'])) {
+      if ($this->checkPhoneExists($data['field_phone'])) {
+        $this->logger->warning('Customer profile creation attempt with duplicate phone number: @phone for user @uid', [
+          '@phone' => $data['field_phone'],
+          '@uid' => $this->currentUser->id(),
+        ]);
+        throw new BadRequestHttpException('Phone number already exists in your customer profiles. Please use a different phone number.');
+      }
+    }
+
     try {
       // Create customer profile node
       $customer_profile = Node::create([
@@ -247,6 +330,12 @@ class CustomerProfileResource extends ResourceBase {
           'format' => $body_format,
         ]);
       }
+      
+      // Set field_local_app_unique_id from request data
+      if (isset($data['field_local_app_unique_id']) && $customer_profile->hasField('field_local_app_unique_id')) {
+        $customer_profile->set('field_local_app_unique_id', $data['field_local_app_unique_id']);
+      }
+
 // add field field_phone 
       if ($customer_profile->hasField('field_phone')) {
         $customer_profile->set('field_phone', $data['field_phone']);
@@ -323,6 +412,10 @@ class CustomerProfileResource extends ResourceBase {
         $response_data['body'] = $customer_profile->get('body')->value;
       }
 
+      // add field field_local_app_unique_id
+      if ($customer_profile->hasField('field_local_app_unique_id') && !$customer_profile->get('field_local_app_unique_id')->isEmpty()) {
+        $response_data['field_local_app_unique_id'] = $customer_profile->get('field_local_app_unique_id')->value;
+      }
       // Add field field_phone 
       if ($customer_profile->hasField('field_phone')) {
         $response_data['field_phone'] = $customer_profile->get('field_phone')->value;
@@ -371,8 +464,8 @@ class CustomerProfileResource extends ResourceBase {
   /**
    * Responds to PATCH requests for updating customer profiles.
    *
-   * @param int $nid
-   *   The customer profile node ID.
+   * @param string $nid
+   *   The customer profile field_local_app_unique_id or node ID.
    * @param array $data
    *   The request data containing fields to update.
    *
@@ -393,18 +486,23 @@ class CustomerProfileResource extends ResourceBase {
       throw new AccessDeniedHttpException('Authentication required.');
     }
 
-    $this->logger->info('Customer profile update request for nid @nid from user: @username', [
-      '@nid' => $nid,
-      '@username' => $this->currentUser->getAccountName(),
-    ]);
-
     try {
-      // Load the customer profile node
-      $customer_profile = Node::load($nid);
+      // Try to find customer profile by field_local_app_unique_id from route parameter
+      $customer_profile = $this->findCustomerProfileByLocalAppId($nid);
+
+      // Fall back to node ID if not found by field_local_app_unique_id
+      if (!$customer_profile && is_numeric($nid)) {
+        $customer_profile = Node::load($nid);
+      }
+
+      $this->logger->info('Customer profile update request for identifier @identifier from user: @username', [
+        '@identifier' => $nid,
+        '@username' => $this->currentUser->getAccountName(),
+      ]);
 
       // Check if customer profile exists
       if (!$customer_profile || $customer_profile->bundle() !== 'customer_profile') {
-        $this->logger->warning('Customer profile not found for update: @nid', ['@nid' => $nid]);
+        $this->logger->warning('Customer profile not found for update: @identifier', ['@identifier' => $nid]);
         throw new NotFoundHttpException('Customer profile not found.');
       }
 
@@ -412,9 +510,24 @@ class CustomerProfileResource extends ResourceBase {
       if (!$customer_profile->access('update', $this->currentUser)) {
         $this->logger->warning('User @username does not have permission to update customer profile @nid', [
           '@username' => $this->currentUser->getAccountName(),
-          '@nid' => $nid,
+          '@nid' => $customer_profile->id(),
         ]);
         throw new AccessDeniedHttpException('You do not have permission to update this customer profile.');
+      }
+
+      // Get the node ID for validation and logging
+      $node_id = $customer_profile->id();
+
+      // Validate phone number uniqueness if provided (per user, exclude current node)
+      if (isset($data['field_phone']) && !empty($data['field_phone']) && $customer_profile->hasField('field_phone')) {
+        if ($this->checkPhoneExists($data['field_phone'], $node_id)) {
+          $this->logger->warning('Customer profile update attempt with duplicate phone number: @phone for nid @nid, user @uid', [
+            '@phone' => $data['field_phone'],
+            '@nid' => $node_id,
+            '@uid' => $this->currentUser->id(),
+          ]);
+          throw new BadRequestHttpException('Phone number already exists in your customer profiles. Please use a different phone number.');
+        }
       }
 
       // Update title if provided
@@ -431,6 +544,11 @@ class CustomerProfileResource extends ResourceBase {
         ]);
       }
 
+      // Update field_local_app_unique_id from request data
+      if (isset($data['field_local_app_unique_id']) && $customer_profile->hasField('field_local_app_unique_id')) {
+        $customer_profile->set('field_local_app_unique_id', $data['field_local_app_unique_id']);
+      }
+      
       // Update field field_phone 
       if (isset($data['field_phone']) && $customer_profile->hasField('field_phone')) {
         $customer_profile->set('field_phone', $data['field_phone']);
@@ -522,6 +640,11 @@ class CustomerProfileResource extends ResourceBase {
         $response_data['body'] = $customer_profile->get('body')->value;
       }
 
+      // field_local_app_unique_id 
+      if ($customer_profile->hasField('field_local_app_unique_id') && !$customer_profile->get('field_local_app_unique_id')->isEmpty()) {
+        $response_data['field_local_app_unique_id'] = $customer_profile->get('field_local_app_unique_id')->value;
+      }
+      
       // Add field field_phone 
       if ($customer_profile->hasField('field_phone')) {
         $response_data['field_phone'] = $customer_profile->get('field_phone')->value;
@@ -576,8 +699,8 @@ class CustomerProfileResource extends ResourceBase {
   /**
    * Responds to DELETE requests for deleting customer profiles.
    *
-   * @param int $nid
-   *   The customer profile node ID.
+   * @param string $nid
+   *   The customer profile field_local_app_unique_id or node ID.
    *
    * @return \Drupal\rest\ResourceResponse
    *   The HTTP response object with deletion confirmation.
@@ -594,18 +717,23 @@ class CustomerProfileResource extends ResourceBase {
       throw new AccessDeniedHttpException('Authentication required.');
     }
 
-    $this->logger->info('Customer profile delete request for nid @nid from user: @username', [
-      '@nid' => $nid,
-      '@username' => $this->currentUser->getAccountName(),
-    ]);
-
     try {
-      // Load the customer profile node
-      $customer_profile = Node::load($nid);
+      // Try to find customer profile by field_local_app_unique_id first
+      $customer_profile = $this->findCustomerProfileByLocalAppId($nid);
+
+      // Fall back to node ID if not found by field_local_app_unique_id
+      if (!$customer_profile && is_numeric($nid)) {
+        $customer_profile = Node::load($nid);
+      }
+
+      $this->logger->info('Customer profile delete request for identifier @identifier from user: @username', [
+        '@identifier' => $nid,
+        '@username' => $this->currentUser->getAccountName(),
+      ]);
 
       // Check if customer profile exists
       if (!$customer_profile || $customer_profile->bundle() !== 'customer_profile') {
-        $this->logger->warning('Customer profile not found for deletion: @nid', ['@nid' => $nid]);
+        $this->logger->warning('Customer profile not found for deletion: @identifier', ['@identifier' => $nid]);
         throw new NotFoundHttpException('Customer profile not found.');
       }
 
@@ -613,7 +741,7 @@ class CustomerProfileResource extends ResourceBase {
       if (!$customer_profile->access('delete', $this->currentUser)) {
         $this->logger->warning('User @username does not have permission to delete customer profile @nid', [
           '@username' => $this->currentUser->getAccountName(),
-          '@nid' => $nid,
+          '@nid' => $customer_profile->id(),
         ]);
         throw new AccessDeniedHttpException('You do not have permission to delete this customer profile.');
       }
