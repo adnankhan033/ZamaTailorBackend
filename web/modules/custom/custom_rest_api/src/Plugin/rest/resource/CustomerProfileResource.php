@@ -147,21 +147,24 @@ class CustomerProfileResource extends ResourceBase {
         $response_data['body'] = $customer_profile->get('body')->value;
       }
 
-      // Add paragraph field data if it exists
+      // Add paragraph field data if it exists (multiple paragraphs)
       if ($customer_profile->hasField('field_measurement') && !$customer_profile->get('field_measurement')->isEmpty()) {
-        $paragraph = $customer_profile->get('field_measurement')->entity;
-        if ($paragraph) {
-          $response_data['field_measurement'] = [
-            'pid' => $paragraph->id(),
-            'field_family_members' => $paragraph->hasField('field_family_members') && !$paragraph->get('field_family_members')->isEmpty() 
-              ? $paragraph->get('field_family_members')->value 
-              : NULL,
-
-            'field_kam_lenght' => $paragraph->hasField('field_kam_lenght') && !$paragraph->get('field_kam_lenght')->isEmpty() 
-              ? $paragraph->get('field_kam_lenght')->value 
-              : NULL,
-
-          ];
+        $paragraphs_data = [];
+        foreach ($customer_profile->get('field_measurement') as $paragraph_item) {
+          $paragraph = $paragraph_item->entity;
+          if ($paragraph) {
+            $paragraphs_data[] = [
+              'field_family_members' => $paragraph->hasField('field_family_members') && !$paragraph->get('field_family_members')->isEmpty() 
+                ? $paragraph->get('field_family_members')->value 
+                : NULL,
+              'field_kam_lenght' => $paragraph->hasField('field_kam_lenght') && !$paragraph->get('field_kam_lenght')->isEmpty() 
+                ? $paragraph->get('field_kam_lenght')->value 
+                : NULL,
+            ];
+          }
+        }
+        if (!empty($paragraphs_data)) {
+          $response_data['field_measurement'] = $paragraphs_data;
         }
       }
 
@@ -255,31 +258,36 @@ class CustomerProfileResource extends ResourceBase {
       }
 
 
-      // Handle paragraph field: field_measurement
-      if (!empty($data['field_measurement']) && $customer_profile->hasField('field_measurement')) {
-        // Get paragraph data (can be object or array)
-        $paragraph_data = $data['field_measurement'];
+      // Handle paragraph field: field_measurement (multiple paragraphs)
+      if (!empty($data['field_measurement']) && is_array($data['field_measurement']) && $customer_profile->hasField('field_measurement')) {
+        $paragraphs = [];
         
-        // Create paragraph entity
-        $paragraph = Paragraph::create([
-          'type' => 'measurement',
-        ]);
-// field_family_members  same like below 
-        if (isset($paragraph_data['field_family_members'])) {
-          $paragraph->set('field_family_members', $paragraph_data['field_family_members']);
+        // Loop through each paragraph data
+        foreach ($data['field_measurement'] as $paragraph_data) {
+          // Create paragraph entity
+          $paragraph = Paragraph::create([
+            'type' => 'measurement',
+          ]);
+          
+          // Set field_family_members if provided
+          if (isset($paragraph_data['field_family_members'])) {
+            $paragraph->set('field_family_members', $paragraph_data['field_family_members']);
+          }
+          
+          // Set field_kam_lenght if provided
+          if (isset($paragraph_data['field_kam_lenght'])) {
+            $paragraph->set('field_kam_lenght', $paragraph_data['field_kam_lenght']);
+          }
+          
+          // Save the paragraph
+          $paragraph->save();
+          $paragraphs[] = $paragraph;
         }
-        // Set field_kam_lenght if provided
-        if (isset($paragraph_data['field_kam_lenght'])) {
-          $paragraph->set('field_kam_lenght', $paragraph_data['field_kam_lenght']);
+        
+        // Set all paragraphs on the customer profile
+        if (!empty($paragraphs)) {
+          $customer_profile->set('field_measurement', $paragraphs);
         }
-
-
-
-        // Save the paragraph first
-        $paragraph->save();
-
-        // Set the paragraph reference on the customer profile (limit 1 as per field config)
-        $customer_profile->set('field_measurement', $paragraph);
       }
 
       // Add custom fields if provided
@@ -327,20 +335,24 @@ class CustomerProfileResource extends ResourceBase {
       }
 
 
-      // Add paragraph field data if it exists
+      // Add paragraph field data if it exists (multiple paragraphs)
       if ($customer_profile->hasField('field_measurement') && !$customer_profile->get('field_measurement')->isEmpty()) {
-        $paragraph = $customer_profile->get('field_measurement')->entity;
-        if ($paragraph) {
-          $response_data['field_measurement'] = [
-            'pid' => $paragraph->id(),
-            'field_family_members' => $paragraph->hasField('field_family_members') && !$paragraph->get('field_family_members')->isEmpty() 
-              ? $paragraph->get('field_family_members')->value 
-              : NULL,
-
-            'field_kam_lenght' => $paragraph->hasField('field_kam_lenght') && !$paragraph->get('field_kam_lenght')->isEmpty() 
-              ? $paragraph->get('field_kam_lenght')->value 
-              : NULL,
-          ];
+        $paragraphs_data = [];
+        foreach ($customer_profile->get('field_measurement') as $paragraph_item) {
+          $paragraph = $paragraph_item->entity;
+          if ($paragraph) {
+            $paragraphs_data[] = [
+              'field_family_members' => $paragraph->hasField('field_family_members') && !$paragraph->get('field_family_members')->isEmpty() 
+                ? $paragraph->get('field_family_members')->value 
+                : NULL,
+              'field_kam_lenght' => $paragraph->hasField('field_kam_lenght') && !$paragraph->get('field_kam_lenght')->isEmpty() 
+                ? $paragraph->get('field_kam_lenght')->value 
+                : NULL,
+            ];
+          }
+        }
+        if (!empty($paragraphs_data)) {
+          $response_data['field_measurement'] = $paragraphs_data;
         }
       }
 
@@ -431,41 +443,44 @@ class CustomerProfileResource extends ResourceBase {
 
 
     
-      // Update paragraph field: field_measurement
-      if (isset($data['field_measurement']) && $customer_profile->hasField('field_measurement')) {
-        $paragraph_data = $data['field_measurement'];
-        
-        // Get existing paragraph or create new one
-        $existing_paragraph = NULL;
+      // Update paragraph field: field_measurement (multiple paragraphs)
+      if (isset($data['field_measurement']) && is_array($data['field_measurement']) && $customer_profile->hasField('field_measurement')) {
+        // Delete existing paragraphs first
         if (!$customer_profile->get('field_measurement')->isEmpty()) {
-          $existing_paragraph = $customer_profile->get('field_measurement')->entity;
+          foreach ($customer_profile->get('field_measurement') as $paragraph_item) {
+            $existing_paragraph = $paragraph_item->entity;
+            if ($existing_paragraph) {
+              $existing_paragraph->delete();
+            }
+          }
         }
         
-        if ($existing_paragraph) {
-          // Update existing paragraph
-          if (isset($paragraph_data['field_family_members'])) {
-            $existing_paragraph->set('field_family_members', $paragraph_data['field_family_members']);
-          }
-          if (isset($paragraph_data['field_kam_lenght'])) {
-            $existing_paragraph->set('field_kam_lenght', $paragraph_data['field_kam_lenght']);
-          }
-          $existing_paragraph->save();
-        }
-        else {
-          // Create new paragraph
+        // Create new paragraphs from the provided data
+        $paragraphs = [];
+        foreach ($data['field_measurement'] as $paragraph_data) {
+          // Create paragraph entity
           $paragraph = Paragraph::create([
-            'type' => 'Measurement',
+            'type' => 'measurement',
           ]);
           
+          // Set field_family_members if provided
           if (isset($paragraph_data['field_family_members'])) {
             $paragraph->set('field_family_members', $paragraph_data['field_family_members']);
           }
+          
+          // Set field_kam_lenght if provided
           if (isset($paragraph_data['field_kam_lenght'])) {
             $paragraph->set('field_kam_lenght', $paragraph_data['field_kam_lenght']);
           }
           
+          // Save the paragraph
           $paragraph->save();
-          $customer_profile->set('field_measurement', $paragraph);
+          $paragraphs[] = $paragraph;
+        }
+        
+        // Set all paragraphs on the customer profile
+        if (!empty($paragraphs)) {
+          $customer_profile->set('field_measurement', $paragraphs);
         }
       }
 
@@ -519,22 +534,24 @@ class CustomerProfileResource extends ResourceBase {
       }
 
 
-      // Add paragraph field data if it exists
+      // Add paragraph field data if it exists (multiple paragraphs)
       if ($customer_profile->hasField('field_measurement') && !$customer_profile->get('field_measurement')->isEmpty()) {
-        $paragraph = $customer_profile->get('field_measurement')->entity;
-        if ($paragraph) {
-          $response_data['field_measurement'] = [
-            'pid' => $paragraph->id(),
-            'field_family_members' => $paragraph->hasField('field_family_members') && !$paragraph->get('field_family_members')->isEmpty() 
-              ? $paragraph->get('field_family_members')->value 
-              : NULL, 
-              
-
-
-            'field_kam_lenght' => $paragraph->hasField('field_kam_lenght') && !$paragraph->get('field_kam_lenght')->isEmpty() 
-              ? $paragraph->get('field_kam_lenght')->value 
-              : NULL,
-          ];
+        $paragraphs_data = [];
+        foreach ($customer_profile->get('field_measurement') as $paragraph_item) {
+          $paragraph = $paragraph_item->entity;
+          if ($paragraph) {
+            $paragraphs_data[] = [
+              'field_family_members' => $paragraph->hasField('field_family_members') && !$paragraph->get('field_family_members')->isEmpty() 
+                ? $paragraph->get('field_family_members')->value 
+                : NULL,
+              'field_kam_lenght' => $paragraph->hasField('field_kam_lenght') && !$paragraph->get('field_kam_lenght')->isEmpty() 
+                ? $paragraph->get('field_kam_lenght')->value 
+                : NULL,
+            ];
+          }
+        }
+        if (!empty($paragraphs_data)) {
+          $response_data['field_measurement'] = $paragraphs_data;
         }
       }
 
