@@ -160,21 +160,11 @@ class CustomerProfileSyncResource extends ResourceBase {
       // Create batch record in qs_batches table for tracking in admin dashboard
       $batch_id = 'customer_profile_' . \Drupal::service('uuid')->generate();
       $queue_name = 'queue_sync_' . $batch_id;
-      $now = time();
       $total_items = count($items_to_queue);
 
-      // Insert batch record into qs_batches table
-      $connection = \Drupal::database();
-      $connection->insert('qs_batches')
-        ->fields([
-          'batch_id' => $batch_id,
-          'queue_name' => $queue_name,
-          'items_total' => $total_items,
-          'items_processed' => 0,
-          'run_at' => $run_at,
-          'status' => 0, // 0 = pending
-          'created' => $now,
-        ])->execute();
+      // Use helper to create batch record
+      $batch_progress_helper = \Drupal::service('queue_sync.batch_progress_helper');
+      $batch_progress_helper->createBatchRecord($batch_id, $queue_name, $total_items, $run_at);
 
       // Queue items to customer_profile_sync_worker with batch_id
       $queue = $this->queueFactory->get('customer_profile_sync_worker');

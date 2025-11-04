@@ -5,6 +5,7 @@ namespace Drupal\custom_rest_api\Plugin\QueueWorker;
 use Drupal\Core\Queue\QueueWorkerBase;
 use Drupal\node\Entity\Node;
 use Drupal\paragraphs\Entity\Paragraph;
+use Drupal\queue_sync\Helper\BatchProgressHelper;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Drupal\Core\Plugin\ContainerFactoryPluginInterface;
@@ -28,6 +29,13 @@ class CustomerProfileSyncQueueWorker extends QueueWorkerBase implements Containe
   protected $logger;
 
   /**
+   * The batch progress helper.
+   *
+   * @var \Drupal\queue_sync\Helper\BatchProgressHelper
+   */
+  protected $batchProgressHelper;
+
+  /**
    * Constructs a CustomerProfileSyncQueueWorker object.
    *
    * @param array $configuration
@@ -38,10 +46,13 @@ class CustomerProfileSyncQueueWorker extends QueueWorkerBase implements Containe
    *   The plugin implementation definition.
    * @param \Psr\Log\LoggerInterface $logger
    *   A logger instance.
+   * @param \Drupal\queue_sync\Helper\BatchProgressHelper $batch_progress_helper
+   *   The batch progress helper service.
    */
-  public function __construct(array $configuration, $plugin_id, $plugin_definition, LoggerInterface $logger) {
+  public function __construct(array $configuration, $plugin_id, $plugin_definition, LoggerInterface $logger, BatchProgressHelper $batch_progress_helper) {
     parent::__construct($configuration, $plugin_id, $plugin_definition);
     $this->logger = $logger;
+    $this->batchProgressHelper = $batch_progress_helper;
   }
 
   /**
@@ -52,7 +63,8 @@ class CustomerProfileSyncQueueWorker extends QueueWorkerBase implements Containe
       $configuration,
       $plugin_id,
       $plugin_definition,
-      $container->get('logger.factory')->get('custom_rest_api')
+      $container->get('logger.factory')->get('custom_rest_api'),
+      $container->get('queue_sync.batch_progress_helper')
     );
   }
 
@@ -71,7 +83,7 @@ class CustomerProfileSyncQueueWorker extends QueueWorkerBase implements Containe
 
       if (!$profile_data || !is_array($profile_data)) {
         $this->logger->error('Invalid profile data in queue item');
-        $this->updateBatchProgress($batch_id, FALSE);
+        $this->batchProgressHelper->updateBatchProgressByBatchId($batch_id, TRUE);
         return;
       }
 
@@ -183,13 +195,13 @@ class CustomerProfileSyncQueueWorker extends QueueWorkerBase implements Containe
       }
 
       // Update batch progress after successful processing
-      $this->updateBatchProgress($batch_id, TRUE);
+      $this->batchProgressHelper->updateBatchProgressByBatchId($batch_id, TRUE);
     }
     catch (\Exception $e) {
       $this->logger->error('Error processing customer profile queue item: @message', [
         '@message' => $e->getMessage(),
       ]);
-      $this->updateBatchProgress($batch_id, FALSE);
+      $this->batchProgressHelper->updateBatchProgressByBatchId($batch_id, TRUE);
       throw $e;
     }
   }
@@ -287,63 +299,6 @@ class CustomerProfileSyncQueueWorker extends QueueWorkerBase implements Containe
     }
   }
 
-  /**
-   * Update batch progress in qs_batches table.
-   *
-   * @param string|null $batch_id
-   *   The batch ID.
-   * @param bool $success
-   *   Whether the item was processed successfully.
-   */
-  protected function updateBatchProgress($batch_id, $success) {
-    if (!$batch_id) {
-      return;
-    }
-
-    try {
-      $connection = \Drupal::database();
-      
-      // Get current batch status
-      $batch = $connection->select('qs_batches', 'b')
-        ->fields('b', ['items_total', 'items_processed', 'status'])
-        ->condition('batch_id', $batch_id)
-        ->execute()
-        ->fetchObject();
-
-      if (!$batch) {
-        return;
-      }
-
-      // Increment processed count
-      $new_processed = $batch->items_processed + 1;
-      $new_status = $batch->status;
-
-      // Update status based on progress
-      if ($new_processed >= $batch->items_total) {
-        // All items processed - mark as completed
-        $new_status = 2; // 2 = completed
-      }
-      elseif ($new_status == 0 && $new_processed > 0) {
-        // First item processed - mark as running
-        $new_status = 1; // 1 = running
-      }
-
-      // Update batch record
-      $connection->update('qs_batches')
-        ->fields([
-          'items_processed' => $new_processed,
-          'status' => $new_status,
-        ])
-        ->condition('batch_id', $batch_id)
-        ->execute();
-    }
-    catch (\Exception $e) {
-      // Log error but don't fail the queue item processing
-      $this->logger->warning('Error updating batch progress: @message', [
-        '@message' => $e->getMessage(),
-      ]);
-    }
-  }
 
   /**
    * Create a new customer profile.
