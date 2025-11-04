@@ -75,27 +75,105 @@ class CustomerProfileSyncQueueWorker extends QueueWorkerBase implements Containe
         return;
       }
 
-      // CRITICAL: Always check if profile exists by field_local_app_unique_id first
-      // This ensures we UPDATE if it exists, CREATE if it doesn't
-      // regardless of what the 'action' field says
+      // CRITICAL: Determine if this is an update or create
+      // Priority order:
+      // 1. If backend_id (node ID) is provided and action is 'update', use it directly
+      // 2. Check if profile exists by new field_local_app_unique_id
+      // 3. If action is 'update' but not found, try to find by phone number (for phone number changes)
       $profile_exists = FALSE;
-      if ($field_local_app_unique_id && $uid) {
+      $existing_profile_nid = NULL;
+      
+      // Priority 1: Check by backend_id (node ID) - most reliable for updates
+      if ($backend_id && $action === 'update') {
+        $node = Node::load($backend_id);
+        if ($node && $node->getType() === 'customer_profile' && $node->get('uid')->target_id == $uid) {
+          $existing_profile_nid = $backend_id;
+          $profile_exists = TRUE;
+          $this->logger->info('Found profile by backend_id (node ID): @nid', [
+            '@nid' => $backend_id,
+          ]);
+        }
+      }
+      
+      // Priority 2: Check by field_local_app_unique_id (if not found by backend_id)
+      if (!$profile_exists && $field_local_app_unique_id && $uid) {
         $profile_exists = $this->checkProfileExists($field_local_app_unique_id, $uid);
+        if ($profile_exists) {
+          // Get the node ID
+          $query = \Drupal::entityQuery('node')
+            ->condition('type', 'customer_profile')
+            ->condition('field_local_app_unique_id', $field_local_app_unique_id)
+            ->condition('uid', $uid)
+            ->accessCheck(FALSE)
+            ->range(0, 1);
+          $nids = $query->execute();
+          if (!empty($nids)) {
+            $existing_profile_nid = reset($nids);
+          }
+        }
         
-        $this->logger->info('Queue worker check: field_local_app_unique_id=@unique_id, exists=@exists, action=@action', [
+        $this->logger->info('Queue worker check: field_local_app_unique_id=@unique_id, exists=@exists, action=@action, backend_id=@backend_id', [
           '@unique_id' => $field_local_app_unique_id,
           '@exists' => $profile_exists ? 'YES' : 'NO',
           '@action' => $action,
+          '@backend_id' => $backend_id ?? 'N/A',
         ]);
       }
+      
+      // Priority 3: If action is 'update' but not found yet, try finding by old unique_id pattern
+      // This handles cases where phone number changed (and thus unique_id changed)
+      // We'll check if there's a profile with the same user that was recently modified
+      // or check if there's only one profile for this user (likely the one to update)
+      if (!$profile_exists && $action === 'update' && $uid) {
+        $this->logger->info('Action is update but profile not found, trying alternative methods...');
+        
+        // Get all customer profiles for this user
+        $all_user_profiles = \Drupal::entityQuery('node')
+          ->condition('type', 'customer_profile')
+          ->condition('uid', $uid)
+          ->accessCheck(FALSE)
+          ->sort('changed', 'DESC')
+          ->range(0, 10) // Check last 10 profiles
+          ->execute();
+        
+        if (!empty($all_user_profiles)) {
+          // If there's only one profile for this user, it's likely the one to update
+          if (count($all_user_profiles) === 1) {
+            $existing_profile_nid = reset($all_user_profiles);
+            $profile_exists = TRUE;
+            $this->logger->info('Found single profile for user - assuming this is the one to update: @nid', [
+              '@nid' => $existing_profile_nid,
+            ]);
+          }
+          else {
+            // If multiple profiles, try to find by matching title (most recent)
+            // This is a fallback - ideally backend_id should be provided
+            if (!empty($profile_data['title'])) {
+              foreach ($all_user_profiles as $nid) {
+                $node = Node::load($nid);
+                if ($node && $node->getTitle() === $profile_data['title']) {
+                  $existing_profile_nid = $nid;
+                  $profile_exists = TRUE;
+                  $this->logger->info('Found profile by matching title: @nid', [
+                    '@nid' => $nid,
+                  ]);
+                  break;
+                }
+              }
+            }
+          }
+        }
+      }
 
-      // If profile exists, always UPDATE (ignore action field)
-      // If profile doesn't exist, always CREATE (ignore action field)
-      if ($profile_exists && $field_local_app_unique_id) {
-        $this->logger->info('Profile exists - UPDATING: @unique_id', [
-          '@unique_id' => $field_local_app_unique_id,
+      // If profile exists, always UPDATE (even if unique_id changed)
+      // If profile doesn't exist, always CREATE
+      if ($profile_exists && $existing_profile_nid) {
+        $this->logger->info('Profile exists - UPDATING node @nid (new unique_id: @unique_id)', [
+          '@nid' => $existing_profile_nid,
+          '@unique_id' => $field_local_app_unique_id ?? 'N/A',
         ]);
-        $this->updateCustomerProfile($field_local_app_unique_id, $profile_data, $uid);
+        // Update using the existing node ID, not the unique_id (which may have changed)
+        $this->updateCustomerProfileByNid($existing_profile_nid, $profile_data, $uid);
       }
       else {
         $this->logger->info('Profile does not exist - CREATING with unique_id: @unique_id', [
@@ -347,6 +425,115 @@ class CustomerProfileSyncQueueWorker extends QueueWorkerBase implements Containe
   }
 
   /**
+   * Update an existing customer profile by node ID.
+   *
+   * @param int $nid
+   *   The node ID.
+   * @param array $data
+   *   The profile data.
+   * @param int $uid
+   *   The user ID.
+   */
+  protected function updateCustomerProfileByNid($nid, array $data, $uid) {
+    try {
+      $customer_profile = Node::load($nid);
+
+      if (!$customer_profile) {
+        throw new \Exception('Customer profile node not found: ' . $nid);
+      }
+
+      // Verify it's a customer profile and belongs to the user
+      if ($customer_profile->getType() !== 'customer_profile') {
+        throw new \Exception('Node is not a customer profile: ' . $nid);
+      }
+
+      if ($customer_profile->get('uid')->target_id != $uid) {
+        throw new \Exception('Customer profile does not belong to user: ' . $uid);
+      }
+
+      // Update title
+      if (!empty($data['title'])) {
+        $customer_profile->setTitle($data['title']);
+      }
+
+      // Update field_local_app_unique_id (may have changed if phone changed)
+      if (!empty($data['field_local_app_unique_id']) && $customer_profile->hasField('field_local_app_unique_id')) {
+        $customer_profile->set('field_local_app_unique_id', $data['field_local_app_unique_id']);
+        $this->logger->info('Updating field_local_app_unique_id to: @unique_id', [
+          '@unique_id' => $data['field_local_app_unique_id'],
+        ]);
+      }
+
+      // Update field_phone
+      if (!empty($data['field_phone']) && $customer_profile->hasField('field_phone')) {
+        $customer_profile->set('field_phone', $data['field_phone']);
+      }
+
+      // Update field_address
+      if (!empty($data['field_address']) && $customer_profile->hasField('field_address')) {
+        $customer_profile->set('field_address', $data['field_address']);
+      }
+
+      // Update field_measurement
+      if (!empty($data['field_measurement']) && is_array($data['field_measurement']) && $customer_profile->hasField('field_measurement')) {
+        // Remove existing paragraphs
+        $field_measurement = $customer_profile->get('field_measurement');
+        try {
+          /** @var \Drupal\Core\Field\EntityReferenceFieldItemListInterface $field_measurement */
+          if ($field_measurement instanceof \Drupal\Core\Field\EntityReferenceFieldItemListInterface) {
+            $existing_paragraphs = $field_measurement->referencedEntities();
+            foreach ($existing_paragraphs as $paragraph) {
+              $paragraph->delete();
+            }
+          }
+        }
+        catch (\Exception $e) {
+          // If referencedEntities doesn't work, skip deletion
+          $this->logger->warning('Could not get referenced entities: @message', [
+            '@message' => $e->getMessage(),
+          ]);
+        }
+
+        // Create new paragraphs
+        $paragraphs = [];
+        foreach ($data['field_measurement'] as $paragraph_data) {
+          $paragraph = Paragraph::create([
+            'type' => 'measurement',
+          ]);
+          
+          if (isset($paragraph_data['field_family_members'])) {
+            $paragraph->set('field_family_members', $paragraph_data['field_family_members']);
+          }
+          
+          if (isset($paragraph_data['field_kam_lenght'])) {
+            $paragraph->set('field_kam_lenght', $paragraph_data['field_kam_lenght']);
+          }
+          
+          $paragraph->save();
+          $paragraphs[] = $paragraph;
+        }
+        
+        if (!empty($paragraphs)) {
+          $customer_profile->set('field_measurement', $paragraphs);
+        }
+      }
+
+      // Save the customer profile
+      $customer_profile->save();
+
+      $this->logger->info('Customer profile updated successfully by node ID: @nid', [
+        '@nid' => $customer_profile->id(),
+      ]);
+    }
+    catch (\Exception $e) {
+      $this->logger->error('Error updating customer profile by node ID: @message', [
+        '@message' => $e->getMessage(),
+      ]);
+      throw $e;
+    }
+  }
+
+  /**
    * Update an existing customer profile.
    *
    * @param string $field_local_app_unique_id
@@ -403,11 +590,20 @@ class CustomerProfileSyncQueueWorker extends QueueWorkerBase implements Containe
       if (!empty($data['field_measurement']) && is_array($data['field_measurement']) && $customer_profile->hasField('field_measurement')) {
         // Remove existing paragraphs
         $field_measurement = $customer_profile->get('field_measurement');
-        if (method_exists($field_measurement, 'referencedEntities')) {
-          $existing_paragraphs = $field_measurement->referencedEntities();
-          foreach ($existing_paragraphs as $paragraph) {
-            $paragraph->delete();
+        try {
+          /** @var \Drupal\Core\Field\EntityReferenceFieldItemListInterface $field_measurement */
+          if ($field_measurement instanceof \Drupal\Core\Field\EntityReferenceFieldItemListInterface) {
+            $existing_paragraphs = $field_measurement->referencedEntities();
+            foreach ($existing_paragraphs as $paragraph) {
+              $paragraph->delete();
+            }
           }
+        }
+        catch (\Exception $e) {
+          // If referencedEntities doesn't work, skip deletion
+          $this->logger->warning('Could not get referenced entities: @message', [
+            '@message' => $e->getMessage(),
+          ]);
         }
 
         // Create new paragraphs
