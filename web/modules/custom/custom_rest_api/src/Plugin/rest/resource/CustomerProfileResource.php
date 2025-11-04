@@ -5,6 +5,7 @@ namespace Drupal\custom_rest_api\Plugin\rest\resource;
 use Drupal\rest\Plugin\ResourceBase;
 use Drupal\rest\ResourceResponse;
 use Drupal\node\Entity\Node;
+use Drupal\paragraphs\Entity\Paragraph;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
@@ -133,9 +134,35 @@ class CustomerProfileResource extends ResourceBase {
         ],
       ];
 
+      
+      if ($customer_profile->hasField('field_address') && !$customer_profile->get('field_address')->isEmpty()) {
+        $address = $customer_profile->get('field_address')->getValue();
+        $response_data['field_address'] = $address[0]['value'];
+      }
+      
+      
+
       // Add body field if it exists
       if ($customer_profile->hasField('body') && !$customer_profile->get('body')->isEmpty()) {
         $response_data['body'] = $customer_profile->get('body')->value;
+      }
+
+      // Add paragraph field data if it exists
+      if ($customer_profile->hasField('field_measurement') && !$customer_profile->get('field_measurement')->isEmpty()) {
+        $paragraph = $customer_profile->get('field_measurement')->entity;
+        if ($paragraph) {
+          $response_data['field_measurement'] = [
+            'pid' => $paragraph->id(),
+            'field_family_members' => $paragraph->hasField('field_family_members') && !$paragraph->get('field_family_members')->isEmpty() 
+              ? $paragraph->get('field_family_members')->value 
+              : NULL,
+
+            'field_kam_lenght' => $paragraph->hasField('field_kam_lenght') && !$paragraph->get('field_kam_lenght')->isEmpty() 
+              ? $paragraph->get('field_kam_lenght')->value 
+              : NULL,
+
+          ];
+        }
       }
 
       return new ResourceResponse($response_data, 200);
@@ -217,6 +244,43 @@ class CustomerProfileResource extends ResourceBase {
           'format' => $body_format,
         ]);
       }
+// add field field_phone 
+      if ($customer_profile->hasField('field_phone')) {
+        $customer_profile->set('field_phone', $data['field_phone']);
+      }
+
+      // Add field text value multiple family member
+      if ($customer_profile->hasField('field_address')) {
+        $customer_profile->set('field_address', $data['field_address']);
+      }
+
+
+      // Handle paragraph field: field_measurement
+      if (!empty($data['field_measurement']) && $customer_profile->hasField('field_measurement')) {
+        // Get paragraph data (can be object or array)
+        $paragraph_data = $data['field_measurement'];
+        
+        // Create paragraph entity
+        $paragraph = Paragraph::create([
+          'type' => 'measurement',
+        ]);
+// field_family_members  same like below 
+        if (isset($paragraph_data['field_family_members'])) {
+          $paragraph->set('field_family_members', $paragraph_data['field_family_members']);
+        }
+        // Set field_kam_lenght if provided
+        if (isset($paragraph_data['field_kam_lenght'])) {
+          $paragraph->set('field_kam_lenght', $paragraph_data['field_kam_lenght']);
+        }
+
+
+
+        // Save the paragraph first
+        $paragraph->save();
+
+        // Set the paragraph reference on the customer profile (limit 1 as per field config)
+        $customer_profile->set('field_measurement', $paragraph);
+      }
 
       // Add custom fields if provided
       if (!empty($data['field_image']) && isset($data['field_image']['data'])) {
@@ -249,6 +313,35 @@ class CustomerProfileResource extends ResourceBase {
       // Add body field if it exists
       if ($customer_profile->hasField('body') && !$customer_profile->get('body')->isEmpty()) {
         $response_data['body'] = $customer_profile->get('body')->value;
+      }
+
+      // Add field field_phone 
+      if ($customer_profile->hasField('field_phone')) {
+        $response_data['field_phone'] = $customer_profile->get('field_phone')->value;
+      }
+
+      // Add field text value multiple family member
+      if ($customer_profile->hasField('field_address')) {
+        $address = $customer_profile->get('field_address')->getValue();
+        $response_data['field_address'] = $address;
+      }
+
+
+      // Add paragraph field data if it exists
+      if ($customer_profile->hasField('field_measurement') && !$customer_profile->get('field_measurement')->isEmpty()) {
+        $paragraph = $customer_profile->get('field_measurement')->entity;
+        if ($paragraph) {
+          $response_data['field_measurement'] = [
+            'pid' => $paragraph->id(),
+            'field_family_members' => $paragraph->hasField('field_family_members') && !$paragraph->get('field_family_members')->isEmpty() 
+              ? $paragraph->get('field_family_members')->value 
+              : NULL,
+
+            'field_kam_lenght' => $paragraph->hasField('field_kam_lenght') && !$paragraph->get('field_kam_lenght')->isEmpty() 
+              ? $paragraph->get('field_kam_lenght')->value 
+              : NULL,
+          ];
+        }
       }
 
       return new ResourceResponse($response_data, 201);
@@ -326,6 +419,56 @@ class CustomerProfileResource extends ResourceBase {
         ]);
       }
 
+      // Update field field_phone 
+      if (isset($data['field_phone']) && $customer_profile->hasField('field_phone')) {
+        $customer_profile->set('field_phone', $data['field_phone']);
+      }
+
+      // Update field text value multiple family member
+      if (isset($data['field_address']) && $customer_profile->hasField('field_address')) {
+        $customer_profile->set('field_address', $data['field_address']);
+      }
+
+
+    
+      // Update paragraph field: field_measurement
+      if (isset($data['field_measurement']) && $customer_profile->hasField('field_measurement')) {
+        $paragraph_data = $data['field_measurement'];
+        
+        // Get existing paragraph or create new one
+        $existing_paragraph = NULL;
+        if (!$customer_profile->get('field_measurement')->isEmpty()) {
+          $existing_paragraph = $customer_profile->get('field_measurement')->entity;
+        }
+        
+        if ($existing_paragraph) {
+          // Update existing paragraph
+          if (isset($paragraph_data['field_family_members'])) {
+            $existing_paragraph->set('field_family_members', $paragraph_data['field_family_members']);
+          }
+          if (isset($paragraph_data['field_kam_lenght'])) {
+            $existing_paragraph->set('field_kam_lenght', $paragraph_data['field_kam_lenght']);
+          }
+          $existing_paragraph->save();
+        }
+        else {
+          // Create new paragraph
+          $paragraph = Paragraph::create([
+            'type' => 'Measurement',
+          ]);
+          
+          if (isset($paragraph_data['field_family_members'])) {
+            $paragraph->set('field_family_members', $paragraph_data['field_family_members']);
+          }
+          if (isset($paragraph_data['field_kam_lenght'])) {
+            $paragraph->set('field_kam_lenght', $paragraph_data['field_kam_lenght']);
+          }
+          
+          $paragraph->save();
+          $customer_profile->set('field_measurement', $paragraph);
+        }
+      }
+
       // Update status if provided
       if (isset($data['status'])) {
         $status = (bool) $data['status'];
@@ -362,6 +505,37 @@ class CustomerProfileResource extends ResourceBase {
       // Add body field if it exists
       if ($customer_profile->hasField('body') && !$customer_profile->get('body')->isEmpty()) {
         $response_data['body'] = $customer_profile->get('body')->value;
+      }
+
+      // Add field field_phone 
+      if ($customer_profile->hasField('field_phone')) {
+        $response_data['field_phone'] = $customer_profile->get('field_phone')->value;
+      }
+
+      // Add field text value multiple family member
+      if ($customer_profile->hasField('field_address')) {
+        $address = $customer_profile->get('field_address')->getValue();
+        $response_data['field_address'] = $address;
+      }
+
+
+      // Add paragraph field data if it exists
+      if ($customer_profile->hasField('field_measurement') && !$customer_profile->get('field_measurement')->isEmpty()) {
+        $paragraph = $customer_profile->get('field_measurement')->entity;
+        if ($paragraph) {
+          $response_data['field_measurement'] = [
+            'pid' => $paragraph->id(),
+            'field_family_members' => $paragraph->hasField('field_family_members') && !$paragraph->get('field_family_members')->isEmpty() 
+              ? $paragraph->get('field_family_members')->value 
+              : NULL, 
+              
+
+
+            'field_kam_lenght' => $paragraph->hasField('field_kam_lenght') && !$paragraph->get('field_kam_lenght')->isEmpty() 
+              ? $paragraph->get('field_kam_lenght')->value 
+              : NULL,
+          ];
+        }
       }
 
       return new ResourceResponse($response_data, 200);
