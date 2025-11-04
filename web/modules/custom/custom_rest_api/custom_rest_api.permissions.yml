@@ -53,3 +53,8 @@ restful post customer_profile_sync_resource:
   title: 'Use customer profile sync resource REST resource'
   description: 'Sync customer profiles via the queue sync REST resource'
   restrict access: true
+
+restful get customer_profile_list_resource:
+  title: 'View customer profile list resource REST resource'
+  description: 'View all customer profiles via the customer profile list REST resource'
+  restrict access: true
