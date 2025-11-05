@@ -160,11 +160,11 @@ class CustomerProfileResource extends ResourceBase {
         ]);
       }
 
-      // If still not found, try loading all customer profiles and checking manually
+      // If still not found, try loading all customer profiles for CURRENT USER ONLY and checking manually
       if (empty($nids)) {
         $query2 = \Drupal::entityQuery('node')
           ->condition('type', 'customer_profile')
-          ->condition('uid', $this->currentUser->id())
+          ->condition('uid', $this->currentUser->id()) // CRITICAL: Only search current user's profiles
           ->accessCheck(FALSE)
           ->range(0, 100); // Limit to reasonable number
         
@@ -200,11 +200,13 @@ class CustomerProfileResource extends ResourceBase {
         return NULL;
       }
       
-      // Verify it belongs to current user
+      // CRITICAL: Verify it belongs to current user (author check)
+      // JWT-authenticated users should only access their own customer profiles
       if ($customer_profile->getOwnerId() == $this->currentUser->id()) {
-        $this->logger->info('Found customer profile by field_local_app_unique_id: @unique_id, nid: @nid', [
+        $this->logger->info('Found customer profile by field_local_app_unique_id: @unique_id, nid: @nid, owner: @owner', [
           '@unique_id' => $local_app_unique_id,
           '@nid' => $nid,
+          '@owner' => $customer_profile->getOwnerId(),
         ]);
         return $customer_profile;
       }
@@ -215,6 +217,8 @@ class CustomerProfileResource extends ResourceBase {
           '@owner' => $customer_profile->getOwnerId(),
           '@current' => $this->currentUser->id(),
         ]);
+        // Return NULL - don't return profiles that don't belong to current user
+        return NULL;
       }
     }
     else {
@@ -266,6 +270,17 @@ class CustomerProfileResource extends ResourceBase {
       if (!$customer_profile || $customer_profile->bundle() !== 'customer_profile') {
         $this->logger->warning('Customer profile not found: @identifier', ['@identifier' => $nid]);
         throw new NotFoundHttpException('Customer profile not found.');
+      }
+
+      // CRITICAL: Ensure this profile belongs to the current user (author check)
+      // JWT-authenticated users should only access their own customer profiles
+      if ($customer_profile->getOwnerId() != $this->currentUser->id()) {
+        $this->logger->warning('Access denied: Profile @nid belongs to user @owner, but current user is @current', [
+          '@nid' => $customer_profile->id(),
+          '@owner' => $customer_profile->getOwnerId(),
+          '@current' => $this->currentUser->id(),
+        ]);
+        throw new AccessDeniedHttpException('You can only access customer profiles that you created.');
       }
 
       // Check if user has permission to view this customer profile

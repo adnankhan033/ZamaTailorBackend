@@ -6,6 +6,21 @@
  */
 
 /**
+ * Implements hook_help().
+ */
+function custom_rest_api_help($route_name, \Drupal\Core\Routing\RouteMatchInterface $route_match) {
+  switch ($route_name) {
+    case 'help.page.custom_rest_api':
+      $output = '';
+      $output .= '<h3>' . t('About') . '</h3>';
+      $output .= '<p>' . t('Custom REST API module provides REST endpoints with JWT authentication.') . '</p>';
+      return $output;
+
+    default:
+  }
+}
+
+/**
  * Implements hook_module_implements_alter().
  */
 function custom_rest_api_module_implements_alter(&$implementations, $hook) {

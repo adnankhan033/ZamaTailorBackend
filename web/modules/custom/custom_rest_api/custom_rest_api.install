@@ -36,6 +36,18 @@ function custom_rest_api_install() {
     $authenticated_role->save();
   }
 
+  // Grant permissions to tailor role if it exists
+  $tailor_role = \Drupal\user\Entity\Role::load('tailor');
+  if ($tailor_role) {
+    $tailor_role->grantPermission('restful get customer_profile_resource');
+    $tailor_role->grantPermission('restful post customer_profile_resource');
+    $tailor_role->grantPermission('restful patch customer_profile_resource');
+    $tailor_role->grantPermission('restful delete customer_profile_resource');
+    $tailor_role->grantPermission('restful post customer_profile_sync_resource');
+    $tailor_role->grantPermission('restful get customer_profile_list_resource');
+    $tailor_role->save();
+  }
+
   // Rebuild routes to register the REST endpoint
   \Drupal::service('router.builder')->rebuild();
 }
@@ -82,6 +94,13 @@ function custom_rest_api_update_8001() {
     $authenticated_role->save();
   }
   
+  // Grant permission to tailor role if it exists
+  $tailor_role = \Drupal\user\Entity\Role::load('tailor');
+  if ($tailor_role) {
+    $tailor_role->grantPermission('restful post customer_profile_sync_resource');
+    $tailor_role->save();
+  }
+  
   // Rebuild routes
   \Drupal::service('router.builder')->rebuild();
 }
@@ -95,6 +114,13 @@ function custom_rest_api_update_8002() {
   if ($authenticated_role) {
     $authenticated_role->grantPermission('restful get customer_profile_list_resource');
     $authenticated_role->save();
+  }
+  
+  // Grant permission to tailor role if it exists
+  $tailor_role = \Drupal\user\Entity\Role::load('tailor');
+  if ($tailor_role) {
+    $tailor_role->grantPermission('restful get customer_profile_list_resource');
+    $tailor_role->save();
   }
   
   // Rebuild routes

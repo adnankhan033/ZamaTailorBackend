@@ -6,6 +6,7 @@ use Drupal\rest\Plugin\ResourceBase;
 use Drupal\rest\ResourceResponse;
 use Drupal\node\Entity\Node;
 use Symfony\Component\DependencyInjection\ContainerInterface;
+use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Psr\Log\LoggerInterface;
@@ -83,35 +84,120 @@ class CustomerProfileListResource extends ResourceBase {
    *   Thrown when user doesn't have permission.
    */
   public function get() {
-    // Check if user is authenticated
+    // Check if user is authenticated via JWT
     if ($this->currentUser->isAnonymous()) {
       $this->logger->error('Access denied: User is anonymous for GET request');
-      throw new AccessDeniedHttpException('Authentication required.');
+      throw new AccessDeniedHttpException('Authentication required. Please provide a valid JWT token.');
     }
 
     try {
-      $uid = $this->currentUser->id();
+      // CRITICAL: Extract UID directly from JWT token to ensure we use the correct user
+      // The current_user service might be cached or incorrect, so we decode the token explicitly
+      $request = \Drupal::request();
+      $auth_header = $request->headers->get('Authorization');
+      $jwt_uid = NULL;
       
-      $this->logger->info('Fetching all customer profiles for user: @username (uid: @uid)', [
-        '@username' => $this->currentUser->getAccountName(),
+      if (!empty($auth_header) && strpos($auth_header, 'Bearer ') === 0) {
+        $raw_jwt = substr($auth_header, 7);
+        try {
+          // Decode JWT to get the actual UID from token
+          $transcoder = \Drupal::service('jwt.transcoder');
+          $jwt = $transcoder->decode($raw_jwt);
+          $payload = $jwt->getPayload();
+          
+          // Convert payload to array recursively
+          $payload = json_decode(json_encode($payload), TRUE);
+          
+          // Get UID from token payload
+          if (isset($payload['drupal']['uid'])) {
+            $jwt_uid = $payload['drupal']['uid'];
+          } elseif (isset($payload['drupal']) && is_array($payload['drupal']) && isset($payload['drupal']['uid'])) {
+            $jwt_uid = $payload['drupal']['uid'];
+          }
+          
+          $this->logger->info('JWT Token decoded - UID from token: @jwt_uid, current_user service UID: @current_uid', [
+            '@jwt_uid' => $jwt_uid,
+            '@current_uid' => $this->currentUser->id(),
+          ]);
+        } catch (\Exception $e) {
+          $this->logger->warning('Failed to decode JWT token: @message', [
+            '@message' => $e->getMessage(),
+          ]);
+        }
+      }
+      
+      // Use JWT token UID if available, otherwise fall back to current_user service
+      $uid = $jwt_uid !== NULL ? (int) $jwt_uid : $this->currentUser->id();
+      $username = $this->currentUser->getAccountName();
+      
+      // CRITICAL: Verify JWT token user ID matches the current user
+      // This ensures we're using the authenticated user from the JWT token
+      $this->logger->info('JWT Authenticated User - Username: @username, UID: @uid (from JWT token)', [
+        '@username' => $username,
         '@uid' => $uid,
       ]);
+      
+      // If JWT UID doesn't match current_user service, log a warning
+      if ($jwt_uid !== NULL && $jwt_uid != $this->currentUser->id()) {
+        $this->logger->warning('JWT UID mismatch! JWT token UID: @jwt_uid, current_user service UID: @current_uid. Using JWT token UID.', [
+          '@jwt_uid' => $jwt_uid,
+          '@current_uid' => $this->currentUser->id(),
+        ]);
+      }
 
-      // Query all customer profiles for the current user
+      // Query all customer profiles STRICTLY for the current JWT-authenticated user (author)
+      // Only return profiles where the node author (uid) matches the JWT token user ID
       $query = \Drupal::entityQuery('node')
         ->condition('type', 'customer_profile')
-        ->condition('uid', $uid)
+        ->condition('uid', $uid) // CRITICAL: Only profiles where author uid = JWT token user uid
         ->accessCheck(FALSE)
         ->sort('created', 'DESC');
 
       $nids = $query->execute();
+      
+      $this->logger->info('Found @count node IDs for user @uid', [
+        '@count' => count($nids),
+        '@uid' => $uid,
+      ]);
 
       $profiles = [];
       
       if (!empty($nids)) {
         foreach ($nids as $nid) {
           $node = Node::load($nid);
-          if ($node && $node->access('view', $this->currentUser)) {
+          
+          if (!$node) {
+            $this->logger->warning('Cannot load node @nid', ['@nid' => $nid]);
+            continue;
+          }
+          
+          // CRITICAL: Verify node author (uid) matches JWT token user ID
+          // This is the core security check - only return profiles where author = JWT user
+          $nodeOwnerId = $node->getOwnerId();
+          
+          if ($nodeOwnerId != $uid) {
+            $this->logger->warning('SECURITY: Skipping profile @nid - author mismatch. Node author: @owner, JWT user: @uid', [
+              '@nid' => $nid,
+              '@owner' => $nodeOwnerId,
+              '@uid' => $uid,
+            ]);
+            continue; // Skip profiles that don't belong to JWT-authenticated user
+          }
+          
+          // Additional check: ensure user has view permission
+          if (!$node->access('view', $this->currentUser)) {
+            $this->logger->warning('Skipping profile @nid - user does not have view permission', [
+              '@nid' => $nid,
+            ]);
+            continue;
+          }
+          
+          // Profile passed all checks - belongs to JWT user
+          $this->logger->debug('Including profile @nid - author @owner matches JWT user @uid', [
+            '@nid' => $nid,
+            '@owner' => $nodeOwnerId,
+            '@uid' => $uid,
+          ]);
             $profile_data = [
               'nid' => $node->id(),
               'title' => $node->getTitle(),
@@ -162,13 +248,34 @@ class CustomerProfileListResource extends ResourceBase {
             }
 
             $profiles[] = $profile_data;
-          }
         }
       }
 
-      $this->logger->info('Returning @count customer profiles for user @uid', [
+      // Final verification: Ensure all profiles belong to JWT user
+      $invalidProfiles = [];
+      foreach ($profiles as $profile) {
+        $profileAuthorId = isset($profile['author']['uid']) ? $profile['author']['uid'] : NULL;
+        if ($profileAuthorId != $uid) {
+          $invalidProfiles[] = $profile['nid'];
+        }
+      }
+      
+      if (!empty($invalidProfiles)) {
+        $this->logger->error('SECURITY ERROR: Found profiles with wrong author! Node IDs: @nids', [
+          '@nids' => implode(', ', $invalidProfiles),
+        ]);
+        // Remove invalid profiles
+        $profiles = array_filter($profiles, function($profile) use ($uid) {
+          $profileAuthorId = isset($profile['author']['uid']) ? $profile['author']['uid'] : NULL;
+          return $profileAuthorId == $uid;
+        });
+        $profiles = array_values($profiles); // Re-index array
+      }
+
+      $this->logger->info('Returning @count customer profiles for JWT user @uid (@username)', [
         '@count' => count($profiles),
         '@uid' => $uid,
+        '@username' => $username,
       ]);
 
       return new ResourceResponse($profiles, 200);
