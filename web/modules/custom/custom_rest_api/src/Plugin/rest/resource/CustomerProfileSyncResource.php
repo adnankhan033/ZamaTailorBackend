@@ -134,17 +134,46 @@ class CustomerProfileSyncResource extends ResourceBase {
         continue;
       }
 
-      // Prepare item for queue
-      $item = [
-        'profile_data' => $profile_data['data'],
-        'action' => $profile_data['action'] ?? 'create', // 'create' or 'update'
-        'field_local_app_unique_id' => $profile_data['field_local_app_unique_id'] ?? NULL,
-        'backend_id' => $profile_data['backend_id'] ?? NULL,
-        'uid' => $this->currentUser->id(),
-        'username' => $this->currentUser->getAccountName(),
-      ];
+      $action = $profile_data['action'] ?? 'create'; // 'create', 'update', or 'delete'
+      
+      // For delete action, queue to delete worker; otherwise use sync worker
+      if ($action === 'delete') {
+        // Prepare deletion item for delete queue
+        $delete_item = [
+          'field_phone' => $profile_data['data']['field_phone'] ?? NULL,
+          'field_local_app_unique_id' => $profile_data['field_local_app_unique_id'] ?? NULL,
+          'backend_id' => $profile_data['backend_id'] ?? NULL,
+          'uid' => $this->currentUser->id(),
+          'username' => $this->currentUser->getAccountName(),
+        ];
+        
+        // Validate delete item has required fields
+        if (empty($delete_item['field_phone']) && empty($delete_item['backend_id']) && empty($delete_item['field_local_app_unique_id'])) {
+          $this->logger->warning('Skipping invalid delete item: missing identification fields');
+          continue;
+        }
+        
+        $items_to_queue[] = [
+          'item' => $delete_item,
+          'action' => 'delete',
+        ];
+      }
+      else {
+        // Prepare item for sync queue (create/update)
+        $item = [
+          'profile_data' => $profile_data['data'],
+          'action' => $action,
+          'field_local_app_unique_id' => $profile_data['field_local_app_unique_id'] ?? NULL,
+          'backend_id' => $profile_data['backend_id'] ?? NULL,
+          'uid' => $this->currentUser->id(),
+          'username' => $this->currentUser->getAccountName(),
+        ];
 
-      $items_to_queue[] = $item;
+        $items_to_queue[] = [
+          'item' => $item,
+          'action' => $action,
+        ];
+      }
     }
 
     if (empty($items_to_queue)) {
@@ -166,13 +195,25 @@ class CustomerProfileSyncResource extends ResourceBase {
       $batch_progress_helper = \Drupal::service('queue_sync.batch_progress_helper');
       $batch_progress_helper->createBatchRecord($batch_id, $queue_name, $total_items, $run_at);
 
-      // Queue items to customer_profile_sync_worker with batch_id
-      $queue = $this->queueFactory->get('customer_profile_sync_worker');
+      // Queue items to appropriate workers
+      $sync_queue = $this->queueFactory->get('customer_profile_sync_worker');
+      $delete_queue = $this->queueFactory->get('customer_profile_delete_worker');
       
-      foreach ($items_to_queue as $item) {
+      foreach ($items_to_queue as $queue_item) {
+        $action = $queue_item['action'];
+        $item = $queue_item['item'];
+        
         // Add batch_id to item for tracking and batch status updates
         $item['batch_id'] = $batch_id;
-        $queue->createItem($item);
+        
+        if ($action === 'delete') {
+          // Queue to delete worker
+          $delete_queue->createItem($item);
+        }
+        else {
+          // Queue to sync worker (create/update)
+          $sync_queue->createItem($item);
+        }
       }
 
       $this->logger->info('Queued @count customer profiles for sync in batch @batch_id', [

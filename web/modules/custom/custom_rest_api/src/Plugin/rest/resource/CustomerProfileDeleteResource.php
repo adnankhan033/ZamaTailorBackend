@@ -11,6 +11,7 @@ use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Psr\Log\LoggerInterface;
 use Drupal\Core\Session\AccountProxyInterface;
+use Drupal\Core\Queue\QueueFactory;
 
 /**
  * Provides a Customer Profile Delete Resource with JWT Authentication.
@@ -33,6 +34,13 @@ class CustomerProfileDeleteResource extends ResourceBase {
   protected $currentUser;
 
   /**
+   * The queue factory.
+   *
+   * @var \Drupal\Core\Queue\QueueFactory
+   */
+  protected $queueFactory;
+
+  /**
    * Constructs a new CustomerProfileDeleteResource object.
    *
    * @param array $configuration
@@ -47,6 +55,8 @@ class CustomerProfileDeleteResource extends ResourceBase {
    *   A logger instance.
    * @param \Drupal\Core\Session\AccountProxyInterface $current_user
    *   A current user instance.
+   * @param \Drupal\Core\Queue\QueueFactory $queue_factory
+   *   The queue factory.
    */
   public function __construct(
     array $configuration,
@@ -54,10 +64,12 @@ class CustomerProfileDeleteResource extends ResourceBase {
     $plugin_definition,
     array $serializer_formats,
     LoggerInterface $logger,
-    AccountProxyInterface $current_user
+    AccountProxyInterface $current_user,
+    QueueFactory $queue_factory
   ) {
     parent::__construct($configuration, $plugin_id, $plugin_definition, $serializer_formats, $logger);
     $this->currentUser = $current_user;
+    $this->queueFactory = $queue_factory;
   }
 
   /**
@@ -70,7 +82,8 @@ class CustomerProfileDeleteResource extends ResourceBase {
       $plugin_definition,
       $container->getParameter('serializer.formats'),
       $container->get('logger.factory')->get('custom_rest_api'),
-      $container->get('current_user')
+      $container->get('current_user'),
+      $container->get('queue')
     );
   }
 
@@ -184,7 +197,7 @@ class CustomerProfileDeleteResource extends ResourceBase {
         throw new AccessDeniedHttpException('You do not have permission to delete this customer profile.');
       }
 
-      // Store data for response before deletion
+      // Store data for response before queuing
       $response_data = [
         'message' => 'Customer profile deleted successfully',
         'field_phone' => $field_phone,
@@ -197,17 +210,49 @@ class CustomerProfileDeleteResource extends ResourceBase {
         $response_data['field_local_app_unique_id'] = $customer_profile->get('field_local_app_unique_id')->value;
       }
 
-      // Delete the customer profile
-      $customer_profile->delete();
+      // Queue the deletion instead of deleting immediately
+      try {
+        // Get queue_sync settings
+        $config = \Drupal::config('queue_sync.settings');
+        $run_at = time(); // Queue to run immediately
 
-      // Log successful deletion
-      $this->logger->info('Customer profile deleted successfully: @nid (phone: @phone) by user @username', [
-        '@nid' => $nid,
-        '@phone' => $field_phone,
-        '@username' => $user_account->getAccountName(),
-      ]);
+        // Create batch record in qs_batches table for tracking in admin dashboard
+        $batch_id = 'customer_profile_delete_' . \Drupal::service('uuid')->generate();
+        $queue_name = 'queue_sync_' . $batch_id;
 
-      return new ResourceResponse($response_data, 200);
+        // Use helper to create batch record
+        $batch_progress_helper = \Drupal::service('queue_sync.batch_progress_helper');
+        $batch_progress_helper->createBatchRecord($batch_id, $queue_name, 1, $run_at);
+
+        // Prepare deletion item for queue
+        $delete_item = [
+          'batch_id' => $batch_id,
+          'nid' => $customer_profile->id(),
+          'field_phone' => $field_phone,
+          'uid' => $uid,
+          'username' => $user_account->getAccountName(),
+        ];
+
+        // Queue item to customer_profile_delete_worker
+        $queue = $this->queueFactory->get('customer_profile_delete_worker');
+        $queue->createItem($delete_item);
+
+        $this->logger->info('Queued customer profile deletion: @nid (phone: @phone) by user @username in batch @batch_id', [
+          '@nid' => $customer_profile->id(),
+          '@phone' => $field_phone,
+          '@username' => $user_account->getAccountName(),
+          '@batch_id' => $batch_id,
+        ]);
+
+        // Return success response immediately (deletion will happen via cron)
+        return new ResourceResponse($response_data, 200);
+      }
+      catch (\Exception $e) {
+        $this->logger->error('Error queuing customer profile deletion: @message', [
+          '@message' => $e->getMessage(),
+        ]);
+        throw new BadRequestHttpException('Failed to queue customer profile deletion: ' . $e->getMessage());
+      }
 
     } catch (AccessDeniedHttpException $e) {
       throw $e;
