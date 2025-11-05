@@ -58,3 +58,8 @@ restful get customer_profile_list_resource:
   title: 'View customer profile list resource REST resource'
   description: 'View all customer profiles via the customer profile list REST resource'
   restrict access: true
+
+restful delete customer_profile_delete_resource:
+  title: 'Delete customer profile delete resource REST resource'
+  description: 'Delete customer profiles by field_local_app_unique_id via the customer profile delete REST resource'
+  restrict access: true

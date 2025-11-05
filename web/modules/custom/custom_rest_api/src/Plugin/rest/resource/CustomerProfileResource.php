@@ -954,6 +954,15 @@ class CustomerProfileResource extends ResourceBase {
       // Fall back to node ID if not found by field_local_app_unique_id
       if (!$customer_profile && is_numeric($nid)) {
         $customer_profile = Node::load($nid);
+        // CRITICAL: Verify it belongs to current user when loading by nid
+        if ($customer_profile && $customer_profile->getOwnerId() != $this->currentUser->id()) {
+          $this->logger->warning('Access denied: Profile @nid belongs to user @owner, but current user is @current', [
+            '@nid' => $nid,
+            '@owner' => $customer_profile->getOwnerId(),
+            '@current' => $this->currentUser->id(),
+          ]);
+          $customer_profile = NULL; // Set to NULL to trigger not found
+        }
       }
 
       $this->logger->info('Customer profile delete request for identifier @identifier from user: @username', [
@@ -967,7 +976,18 @@ class CustomerProfileResource extends ResourceBase {
         throw new NotFoundHttpException('Customer profile not found.');
       }
 
-      // Check if user has permission to delete this customer profile
+      // CRITICAL: Ensure this profile belongs to the current user (author check)
+      // JWT-authenticated users should only delete their own customer profiles
+      if ($customer_profile->getOwnerId() != $this->currentUser->id()) {
+        $this->logger->warning('Access denied: Profile @nid belongs to user @owner, but current user is @current', [
+          '@nid' => $customer_profile->id(),
+          '@owner' => $customer_profile->getOwnerId(),
+          '@current' => $this->currentUser->id(),
+        ]);
+        throw new AccessDeniedHttpException('You can only delete customer profiles that you created.');
+      }
+
+      // Additional access check using Drupal's permission system
       if (!$customer_profile->access('delete', $this->currentUser)) {
         $this->logger->warning('User @username does not have permission to delete customer profile @nid', [
           '@username' => $this->currentUser->getAccountName(),

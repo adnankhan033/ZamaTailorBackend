@@ -33,6 +33,7 @@ function custom_rest_api_install() {
     $authenticated_role->grantPermission('restful delete customer_profile_resource');
     $authenticated_role->grantPermission('restful post customer_profile_sync_resource');
     $authenticated_role->grantPermission('restful get customer_profile_list_resource');
+    $authenticated_role->grantPermission('restful delete customer_profile_delete_resource');
     $authenticated_role->save();
   }
 
@@ -45,6 +46,7 @@ function custom_rest_api_install() {
     $tailor_role->grantPermission('restful delete customer_profile_resource');
     $tailor_role->grantPermission('restful post customer_profile_sync_resource');
     $tailor_role->grantPermission('restful get customer_profile_list_resource');
+    $tailor_role->grantPermission('restful delete customer_profile_delete_resource');
     $tailor_role->save();
   }
 
@@ -120,6 +122,28 @@ function custom_rest_api_update_8002() {
   $tailor_role = \Drupal\user\Entity\Role::load('tailor');
   if ($tailor_role) {
     $tailor_role->grantPermission('restful get customer_profile_list_resource');
+    $tailor_role->save();
+  }
+  
+  // Rebuild routes
+  \Drupal::service('router.builder')->rebuild();
+}
+
+/**
+ * Grant permission for customer profile delete resource.
+ */
+function custom_rest_api_update_8003() {
+  $authenticated_role = \Drupal\user\Entity\Role::load(\Drupal\user\RoleInterface::AUTHENTICATED_ID);
+  
+  if ($authenticated_role) {
+    $authenticated_role->grantPermission('restful delete customer_profile_delete_resource');
+    $authenticated_role->save();
+  }
+  
+  // Grant permission to tailor role if it exists
+  $tailor_role = \Drupal\user\Entity\Role::load('tailor');
+  if ($tailor_role) {
+    $tailor_role->grantPermission('restful delete customer_profile_delete_resource');
     $tailor_role->save();
   }
   
