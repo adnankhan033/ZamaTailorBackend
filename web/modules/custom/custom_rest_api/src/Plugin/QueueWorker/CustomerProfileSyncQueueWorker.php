@@ -5,6 +5,8 @@ namespace Drupal\custom_rest_api\Plugin\QueueWorker;
 use Drupal\Core\Queue\QueueWorkerBase;
 use Drupal\node\Entity\Node;
 use Drupal\paragraphs\Entity\Paragraph;
+use Drupal\file\Entity\File;
+use Drupal\file\FileInterface;
 use Drupal\queue_sync\Helper\BatchProgressHelper;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\DependencyInjection\ContainerInterface;
@@ -355,6 +357,62 @@ class CustomerProfileSyncQueueWorker extends QueueWorkerBase implements Containe
             $paragraph->set('field_kam_lenght', $paragraph_data['field_kam_lenght']);
           }
           
+          // Set field_old_measurement_book_image if provided
+          if (isset($paragraph_data['field_old_measurement_book_image']) && !empty($paragraph_data['field_old_measurement_book_image'])) {
+            // Handle image field - expects base64 encoded image data
+            if ($paragraph->hasField('field_old_measurement_book_image')) {
+              $image_data = $paragraph_data['field_old_measurement_book_image'];
+              
+              // Handle object format (like records) with data, filename, mime
+              if (is_array($image_data) && isset($image_data['data'])) {
+                $image_data = $image_data['data'];
+              }
+              
+              // If it's a base64 string, decode and create file
+              // Skip if it's already a URL (from existing Drupal file)
+              if (is_string($image_data) && !preg_match('/^https?:\/\//', $image_data)) {
+                // Extract base64 data if it's a data URL
+                $base64_string = $image_data;
+                if (strpos($image_data, 'data:image') === 0) {
+                  $base64_data = explode(',', $image_data);
+                  if (count($base64_data) > 1) {
+                    $base64_string = $base64_data[1];
+                  }
+                }
+                
+                // Decode base64 image
+                $decoded_image = base64_decode($base64_string, true);
+                
+                if ($decoded_image !== false) {
+                  // Create file entity
+                  $file_system = \Drupal::service('file_system');
+                  
+                  // Generate unique filename
+                  $filename = 'measurement_' . uniqid() . '.jpg';
+                  $directory = 'public://measurement_images/';
+                  $file_system->prepareDirectory($directory, \Drupal\Core\File\FileSystemInterface::CREATE_DIRECTORY | \Drupal\Core\File\FileSystemInterface::MODIFY_PERMISSIONS);
+                  
+                  $file_uri = $directory . $filename;
+                  $file_system->saveData($decoded_image, $file_uri, \Drupal\Core\File\FileSystemInterface::EXISTS_REPLACE);
+                  
+                  // Create file entity
+                  $file = File::create([
+                    'uri' => $file_uri,
+                    'uid' => 1, // System user for queue processing
+                    'status' => FileInterface::STATUS_PERMANENT,
+                  ]);
+                  $file->save();
+                  
+                  // Set the image field
+                  $paragraph->set('field_old_measurement_book_image', [
+                    'target_id' => $file->id(),
+                    'alt' => 'Measurement Book Image',
+                  ]);
+                }
+              }
+            }
+          }
+          
           $paragraph->save();
           $paragraphs[] = $paragraph;
         }
@@ -462,6 +520,62 @@ class CustomerProfileSyncQueueWorker extends QueueWorkerBase implements Containe
           
           if (isset($paragraph_data['field_kam_lenght'])) {
             $paragraph->set('field_kam_lenght', $paragraph_data['field_kam_lenght']);
+          }
+          
+          // Set field_old_measurement_book_image if provided
+          if (isset($paragraph_data['field_old_measurement_book_image']) && !empty($paragraph_data['field_old_measurement_book_image'])) {
+            // Handle image field - expects base64 encoded image data
+            if ($paragraph->hasField('field_old_measurement_book_image')) {
+              $image_data = $paragraph_data['field_old_measurement_book_image'];
+              
+              // Handle object format (like records) with data, filename, mime
+              if (is_array($image_data) && isset($image_data['data'])) {
+                $image_data = $image_data['data'];
+              }
+              
+              // If it's a base64 string, decode and create file
+              // Skip if it's already a URL (from existing Drupal file)
+              if (is_string($image_data) && !preg_match('/^https?:\/\//', $image_data)) {
+                // Extract base64 data if it's a data URL
+                $base64_string = $image_data;
+                if (strpos($image_data, 'data:image') === 0) {
+                  $base64_data = explode(',', $image_data);
+                  if (count($base64_data) > 1) {
+                    $base64_string = $base64_data[1];
+                  }
+                }
+                
+                // Decode base64 image
+                $decoded_image = base64_decode($base64_string, true);
+                
+                if ($decoded_image !== false) {
+                  // Create file entity
+                  $file_system = \Drupal::service('file_system');
+                  
+                  // Generate unique filename
+                  $filename = 'measurement_' . uniqid() . '.jpg';
+                  $directory = 'public://measurement_images/';
+                  $file_system->prepareDirectory($directory, \Drupal\Core\File\FileSystemInterface::CREATE_DIRECTORY | \Drupal\Core\File\FileSystemInterface::MODIFY_PERMISSIONS);
+                  
+                  $file_uri = $directory . $filename;
+                  $file_system->saveData($decoded_image, $file_uri, \Drupal\Core\File\FileSystemInterface::EXISTS_REPLACE);
+                  
+                  // Create file entity
+                  $file = File::create([
+                    'uri' => $file_uri,
+                    'uid' => 1, // System user for queue processing
+                    'status' => FileInterface::STATUS_PERMANENT,
+                  ]);
+                  $file->save();
+                  
+                  // Set the image field
+                  $paragraph->set('field_old_measurement_book_image', [
+                    'target_id' => $file->id(),
+                    'alt' => 'Measurement Book Image',
+                  ]);
+                }
+              }
+            }
           }
           
           $paragraph->save();
@@ -574,6 +688,62 @@ class CustomerProfileSyncQueueWorker extends QueueWorkerBase implements Containe
           
           if (isset($paragraph_data['field_kam_lenght'])) {
             $paragraph->set('field_kam_lenght', $paragraph_data['field_kam_lenght']);
+          }
+          
+          // Set field_old_measurement_book_image if provided
+          if (isset($paragraph_data['field_old_measurement_book_image']) && !empty($paragraph_data['field_old_measurement_book_image'])) {
+            // Handle image field - expects base64 encoded image data
+            if ($paragraph->hasField('field_old_measurement_book_image')) {
+              $image_data = $paragraph_data['field_old_measurement_book_image'];
+              
+              // Handle object format (like records) with data, filename, mime
+              if (is_array($image_data) && isset($image_data['data'])) {
+                $image_data = $image_data['data'];
+              }
+              
+              // If it's a base64 string, decode and create file
+              // Skip if it's already a URL (from existing Drupal file)
+              if (is_string($image_data) && !preg_match('/^https?:\/\//', $image_data)) {
+                // Extract base64 data if it's a data URL
+                $base64_string = $image_data;
+                if (strpos($image_data, 'data:image') === 0) {
+                  $base64_data = explode(',', $image_data);
+                  if (count($base64_data) > 1) {
+                    $base64_string = $base64_data[1];
+                  }
+                }
+                
+                // Decode base64 image
+                $decoded_image = base64_decode($base64_string, true);
+                
+                if ($decoded_image !== false) {
+                  // Create file entity
+                  $file_system = \Drupal::service('file_system');
+                  
+                  // Generate unique filename
+                  $filename = 'measurement_' . uniqid() . '.jpg';
+                  $directory = 'public://measurement_images/';
+                  $file_system->prepareDirectory($directory, \Drupal\Core\File\FileSystemInterface::CREATE_DIRECTORY | \Drupal\Core\File\FileSystemInterface::MODIFY_PERMISSIONS);
+                  
+                  $file_uri = $directory . $filename;
+                  $file_system->saveData($decoded_image, $file_uri, \Drupal\Core\File\FileSystemInterface::EXISTS_REPLACE);
+                  
+                  // Create file entity
+                  $file = File::create([
+                    'uri' => $file_uri,
+                    'uid' => 1, // System user for queue processing
+                    'status' => FileInterface::STATUS_PERMANENT,
+                  ]);
+                  $file->save();
+                  
+                  // Set the image field
+                  $paragraph->set('field_old_measurement_book_image', [
+                    'target_id' => $file->id(),
+                    'alt' => 'Measurement Book Image',
+                  ]);
+                }
+              }
+            }
           }
           
           $paragraph->save();
