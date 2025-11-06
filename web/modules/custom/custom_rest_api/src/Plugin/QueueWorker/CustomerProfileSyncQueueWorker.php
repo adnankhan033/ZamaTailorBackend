@@ -524,7 +524,7 @@ class CustomerProfileSyncQueueWorker extends QueueWorkerBase implements Containe
           
           // Set field_old_measurement_book_image if provided
           if (isset($paragraph_data['field_old_measurement_book_image']) && !empty($paragraph_data['field_old_measurement_book_image'])) {
-            // Handle image field - expects base64 encoded image data
+            // Handle image field - expects base64 encoded image data or URL
             if ($paragraph->hasField('field_old_measurement_book_image')) {
               $image_data = $paragraph_data['field_old_measurement_book_image'];
               
@@ -533,9 +533,33 @@ class CustomerProfileSyncQueueWorker extends QueueWorkerBase implements Containe
                 $image_data = $image_data['data'];
               }
               
-              // If it's a base64 string, decode and create file
-              // Skip if it's already a URL (from existing Drupal file)
-              if (is_string($image_data) && !preg_match('/^https?:\/\//', $image_data)) {
+              // Check if it's a URL (from existing Drupal file)
+              if (is_string($image_data) && preg_match('/^https?:\/\//', $image_data)) {
+                // It's a URL - try to find the existing file entity by URL
+                // Extract file path from URL
+                $url_parts = parse_url($image_data);
+                if (isset($url_parts['path'])) {
+                  // Try to find file by URI
+                  $file_path = str_replace('/sites/default/files/', 'public://', $url_parts['path']);
+                  $files = \Drupal::entityTypeManager()
+                    ->getStorage('file')
+                    ->loadByProperties(['uri' => $file_path]);
+                  
+                  if (!empty($files)) {
+                    $file = reset($files);
+                    // Set the image field with existing file
+                    $paragraph->set('field_old_measurement_book_image', [
+                      'target_id' => $file->id(),
+                      'alt' => 'Measurement Book Image',
+                    ]);
+                    $this->logger->info('Reusing existing file for measurement image: @fid', ['@fid' => $file->id()]);
+                  } else {
+                    // File not found by URI, skip (will create new one if base64 provided later)
+                    $this->logger->warning('Could not find existing file for URL: @url', ['@url' => $image_data]);
+                  }
+                }
+              } else if (is_string($image_data) && !preg_match('/^https?:\/\//', $image_data)) {
+                // It's base64 - decode and create new file
                 // Extract base64 data if it's a data URL
                 $base64_string = $image_data;
                 if (strpos($image_data, 'data:image') === 0) {
@@ -573,6 +597,7 @@ class CustomerProfileSyncQueueWorker extends QueueWorkerBase implements Containe
                     'target_id' => $file->id(),
                     'alt' => 'Measurement Book Image',
                   ]);
+                  $this->logger->info('Created new file for measurement image: @fid', ['@fid' => $file->id()]);
                 }
               }
             }
