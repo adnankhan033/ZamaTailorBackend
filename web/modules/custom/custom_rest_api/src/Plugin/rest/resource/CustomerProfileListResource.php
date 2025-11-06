@@ -183,7 +183,7 @@ class CustomerProfileListResource extends ResourceBase {
             foreach ($node->get('field_measurement') as $paragraph_item) {
               $paragraph = $paragraph_item->entity;
               if ($paragraph) {
-                $paragraphs_data[] = [
+                $paragraph_data = [
                   'field_family_members' => $paragraph->hasField('field_family_members') && !$paragraph->get('field_family_members')->isEmpty() 
                     ? $paragraph->get('field_family_members')->value 
                     : NULL,
@@ -191,6 +191,31 @@ class CustomerProfileListResource extends ResourceBase {
                     ? $paragraph->get('field_kam_lenght')->value 
                     : NULL,
                 ];
+                
+                // Add image field if it exists
+                if ($paragraph->hasField('field_old_measurement_book_image') && !$paragraph->get('field_old_measurement_book_image')->isEmpty()) {
+                  $image_field = $paragraph->get('field_old_measurement_book_image');
+                  $file = $image_field->entity;
+                  if ($file) {
+                    try {
+                      // Get the file URL - try file_url_generator service first (Drupal 9+)
+                      $file_uri = $file->getFileUri();
+                      if (\Drupal::hasService('file_url_generator')) {
+                        $file_url = \Drupal::service('file_url_generator')->generateAbsoluteString($file_uri);
+                      } else {
+                        // Fallback for older Drupal versions
+                        $file_url = file_create_url($file_uri);
+                      }
+                      $paragraph_data['field_old_measurement_book_image'] = $file_url;
+                      $this->logger->debug('Including image URL in profile response: @url', ['@url' => $file_url]);
+                    } catch (\Exception $e) {
+                      $this->logger->warning('Error generating file URL: @message', ['@message' => $e->getMessage()]);
+                      // Continue without image if URL generation fails
+                    }
+                  }
+                }
+                
+                $paragraphs_data[] = $paragraph_data;
               }
             }
             if (!empty($paragraphs_data)) {
