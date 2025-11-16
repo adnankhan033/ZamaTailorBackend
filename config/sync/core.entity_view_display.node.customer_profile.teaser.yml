@@ -1,0 +1,32 @@
+uuid: acda33bc-a631-472e-bbe4-c7444259a06a
+langcode: en
+status: true
+dependencies:
+  config:
+    - core.entity_view_mode.node.teaser
+    - field.field.node.customer_profile.body
+    - field.field.node.customer_profile.field_kamees_shalwar
+    - node.type.customer_profile
+  module:
+    - text
+    - user
+id: node.customer_profile.teaser
+targetEntityType: node
+bundle: customer_profile
+mode: teaser
+content:
+  body:
+    type: text_summary_or_trimmed
+    label: hidden
+    settings:
+      trim_length: 600
+    third_party_settings: {  }
+    weight: 101
+    region: content
+  links:
+    settings: {  }
+    third_party_settings: {  }
+    weight: 100
+    region: content
+hidden:
+  field_kamees_shalwar: true

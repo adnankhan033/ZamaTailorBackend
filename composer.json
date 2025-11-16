@@ -20,9 +20,12 @@
         "drupal/core-composer-scaffold": "^10.5",
         "drupal/core-project-message": "^10.5",
         "drupal/core-recommended": "^10.5",
+        "drupal/devel": "^5.4",
         "drupal/examples": "^4.0",
         "drupal/jwt": "^2.2",
+        "drupal/paragraphs": "^1.19",
         "drupal/queue_ui": "^3.2",
+        "drupal/restui": "^1.22",
         "drupal/ultimate_cron": "^2.0@beta",
         "drush/drush": "^12.5"
     },

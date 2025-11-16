@@ -30,7 +30,7 @@ queue_sync.generate_large:
   requirements:
     _permission: 'administer site configuration'
 
-landoqueue_sync.settings:
+queue_sync.settings:
   path: '/admin/config/queue-sync/settings'
   defaults:
     _form: '\Drupal\queue_sync\Form\QueueSyncSettingsForm'

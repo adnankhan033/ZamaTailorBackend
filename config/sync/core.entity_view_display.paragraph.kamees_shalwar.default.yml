@@ -1,0 +1,21 @@
+uuid: a99f5945-5223-4688-9112-b560f5739152
+langcode: en
+status: true
+dependencies:
+  config:
+    - field.field.paragraph.kamees_shalwar.field_kam_lenght
+    - paragraphs.paragraphs_type.kamees_shalwar
+id: paragraph.kamees_shalwar.default
+targetEntityType: paragraph
+bundle: kamees_shalwar
+mode: default
+content:
+  field_kam_lenght:
+    type: string
+    label: above
+    settings:
+      link_to_entity: false
+    third_party_settings: {  }
+    weight: 0
+    region: content
+hidden: {  }

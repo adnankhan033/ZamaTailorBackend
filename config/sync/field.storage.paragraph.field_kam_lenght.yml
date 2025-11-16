@@ -1,0 +1,21 @@
+uuid: 485c7436-500d-46aa-9989-0fdb433d7b11
+langcode: en
+status: true
+dependencies:
+  module:
+    - paragraphs
+id: paragraph.field_kam_lenght
+field_name: field_kam_lenght
+entity_type: paragraph
+type: string
+settings:
+  max_length: 255
+  case_sensitive: false
+  is_ascii: false
+module: core
+locked: false
+cardinality: 1
+translatable: true
+indexes: {  }
+persist_with_no_fields: false
+custom_storage: false

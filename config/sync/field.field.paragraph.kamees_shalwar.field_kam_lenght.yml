@@ -1,0 +1,19 @@
+uuid: 1a5010fe-ffb2-442c-964d-beb8d33e48bb
+langcode: en
+status: true
+dependencies:
+  config:
+    - field.storage.paragraph.field_kam_lenght
+    - paragraphs.paragraphs_type.kamees_shalwar
+id: paragraph.kamees_shalwar.field_kam_lenght
+field_name: field_kam_lenght
+entity_type: paragraph
+bundle: kamees_shalwar
+label: kam_lenght
+description: ''
+required: false
+translatable: false
+default_value: {  }
+default_value_callback: ''
+settings: {  }
+field_type: string

@@ -1,0 +1,31 @@
+uuid: a4290f40-b4b2-46f8-abd0-6946e7b15f88
+langcode: en
+status: true
+dependencies:
+  config:
+    - field.storage.node.field_kamees_shalwar
+    - node.type.customer_profile
+    - paragraphs.paragraphs_type.kamees_shalwar
+  module:
+    - entity_reference_revisions
+id: node.customer_profile.field_kamees_shalwar
+field_name: field_kamees_shalwar
+entity_type: node
+bundle: customer_profile
+label: kamees_shalwar
+description: ''
+required: false
+translatable: false
+default_value: {  }
+default_value_callback: ''
+settings:
+  handler: 'default:paragraph'
+  handler_settings:
+    target_bundles:
+      kamees_shalwar: kamees_shalwar
+    negate: 0
+    target_bundles_drag_drop:
+      kamees_shalwar:
+        weight: 2
+        enabled: true
+field_type: entity_reference_revisions

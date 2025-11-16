@@ -1,20 +1,21 @@
-uuid: 1d5fe928-2036-434c-8c42-b0de0f5fd5ea
+uuid: 416692c4-7b58-4898-b19a-78b802f3d054
 langcode: en
-status: false
+status: true
 dependencies:
   module:
+    - custom_rest_api
     - jwt
-    - node
     - serialization
     - user
-id: entity.node
-plugin_id: 'entity:node'
+id: customer_profile_resource
+plugin_id: customer_profile_resource
 granularity: resource
 configuration:
   methods:
     - GET
     - POST
     - DELETE
+    - PATCH
   formats:
     - json
   authentication:

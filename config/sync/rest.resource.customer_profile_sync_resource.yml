@@ -1,0 +1,22 @@
+uuid: custom-customer-profile-sync-resource-uuid
+langcode: en
+status: true
+dependencies:
+  module:
+    - custom_rest_api
+    - jwt
+    - serialization
+    - user
+_core:
+  default_config_hash: customer_profile_sync_resource_hash
+id: customer_profile_sync_resource
+plugin_id: customer_profile_sync_resource
+granularity: method
+configuration:
+  POST:
+    supported_formats:
+      - json
+    supported_auth:
+      - jwt_auth
+      - cookie
+

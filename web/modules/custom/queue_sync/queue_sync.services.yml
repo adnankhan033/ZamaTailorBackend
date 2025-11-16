@@ -11,3 +11,7 @@ services:
   queue_sync.capacity_manager:
     class: Drupal\queue_sync\Service\CapacityManager
     arguments: ['@logger.factory']
+
+  queue_sync.batch_progress_helper:
+    class: Drupal\queue_sync\Helper\BatchProgressHelper
+    arguments: ['@database', '@logger.factory']
